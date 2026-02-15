@@ -1,14 +1,16 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
 
 const TOKEN_STORAGE_KEY = 'qwiky_admin_token';
 
-// Get token from environment or use empty as fallback (user must set in settings)
+// Default token from environment
 const DEFAULT_TOKEN = process.env.EXPO_PUBLIC_QWIKY_TOKEN || '';
 
-// Use the backend proxy URL from environment
+// IMPORTANT: Must stay '/api' for Vercel rewrite to work
 const API_BASE_URL = '/api';
+
+// Hardcoded Hood ID (as requested)
+const HOOD_ID = '4dd4d3a6-c0b3-4042-8e01-5b9299273ee1';
 
 let currentToken = DEFAULT_TOKEN;
 
@@ -21,7 +23,7 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
-// Request interceptor to add auth header
+// Request interceptor to attach token
 apiClient.interceptors.request.use(
   async (config) => {
     try {
@@ -29,10 +31,14 @@ apiClient.interceptors.request.use(
       if (storedToken) {
         currentToken = storedToken;
       }
-    } catch (e) {
-      // Use current token if storage fails
+    } catch {
+      // Ignore storage failures
     }
-    config.headers.Authorization = `Bearer ${currentToken}`;
+
+    if (currentToken) {
+      config.headers.Authorization = `Bearer ${currentToken}`;
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -43,28 +49,47 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     let errorMessage = 'An unexpected error occurred';
-    
+
     if (error.response) {
-      // Server responded with error
       const data = error.response.data as any;
-      errorMessage = data?.detail || data?.message || `Error: ${error.response.status}`;
+      errorMessage =
+        data?.detail ||
+        data?.message ||
+        `Error: ${error.response.status}`;
       console.error('API Error:', error.response.status, errorMessage);
     } else if (error.request) {
-      // Network error
       errorMessage = 'Network error. Please check your connection.';
       console.error('Network Error:', error.message);
     } else {
       errorMessage = error.message || 'Request failed';
       console.error('Request Error:', error.message);
     }
-    
-    // Attach friendly message to error
+
     (error as any).friendlyMessage = errorMessage;
     return Promise.reject(error);
   }
 );
 
-// Token management functions
+// --------------------
+// TYPES
+// --------------------
+
+export interface PaginatedResponse {
+  _embedded: {
+    bookingDetailsResponses: any[];
+  };
+  page: {
+    size: number;
+    totalElements: number;
+    totalPages: number;
+    number: number;
+  };
+}
+
+// --------------------
+// TOKEN MANAGEMENT
+// --------------------
+
 export const getToken = async (): Promise<string> => {
   try {
     const storedToken = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
@@ -93,56 +118,54 @@ export const resetToken = async (): Promise<void> => {
   }
 };
 
-// Pagination response type
-export interface PaginatedResponse {
-  _embedded: {
-    bookingDetailsResponses: any[];
-  };
-  page: {
-    size: number;
-    totalElements: number;
-    totalPages: number;
-    number: number;
-  };
-}
-
-// API Functions using backend proxy
+// --------------------
+// API FUNCTIONS
+// --------------------
 
 // Fetch bookings with pagination
-export const fetchBookings = async (page: number = 0, size: number = 20): Promise<PaginatedResponse> => {
-  const response = await apiClient.get('/qwiky/bookings', {
-    params: { page, size }
-  });
-  return response.data;
-};
+export const fetchBookings = async (
+  page: number = 0,
+  size: number = 20
+): Promise<PaginatedResponse> => {
+  const response = await apiClient.get(
+    `/admin/booking/hood/${HOOD_ID}`,
+    {
+      params: { page, size },
+    }
+  );
 
-// Fetch bookings count for polling
-export const fetchBookingsCount = async (): Promise<{ totalCount: number }> => {
-  const response = await apiClient.get('/qwiky/bookings/count');
   return response.data;
 };
 
 // Fetch user details
 export const fetchUserDetails = async (userId: string) => {
-  const response = await apiClient.get(`/qwiky/user/${userId}`);
+  const response = await apiClient.get(`/user/${userId}`);
   return response.data;
 };
 
 // Cancel booking
 export const cancelBooking = async (bookingId: string) => {
-  const response = await apiClient.post(`/qwiky/booking/${bookingId}/cancel`);
+  const response = await apiClient.post(
+    `/admin/booking/${bookingId}/cancel`
+  );
   return response.data;
 };
 
 // Settle booking
 export const settleBooking = async (bookingId: string) => {
-  const response = await apiClient.post(`/qwiky/booking/${bookingId}/settled`);
+  const response = await apiClient.post(
+    `/admin/booking/${bookingId}/settled`
+  );
   return response.data;
 };
 
-// Helper to get friendly error message
+// Helper to extract friendly error message
 export const getErrorMessage = (error: any): string => {
-  return error?.friendlyMessage || error?.message || 'An error occurred';
+  return (
+    error?.friendlyMessage ||
+    error?.message ||
+    'An error occurred'
+  );
 };
 
 export default apiClient;
