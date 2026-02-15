@@ -8,8 +8,7 @@ const TOKEN_STORAGE_KEY = 'qwiky_admin_token';
 const DEFAULT_TOKEN = process.env.EXPO_PUBLIC_QWIKY_TOKEN || '';
 
 // Use the backend proxy URL from environment
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
-const API_BASE_URL = BACKEND_URL ? `${BACKEND_URL}/api` : '/api';
+const API_BASE_URL = '/api';
 
 let currentToken = DEFAULT_TOKEN;
 
