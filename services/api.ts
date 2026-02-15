@@ -139,7 +139,7 @@ export const fetchBookings = async (
 
 // Fetch user details
 export const fetchUserDetails = async (userId: string) => {
-  const response = await apiClient.get(`/user/${userId}`);
+  const response = await apiClient.get(`/admin/user/${userId}`);
   return response.data;
 };
 
