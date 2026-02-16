@@ -143,21 +143,22 @@ export const fetchUserDetails = async (userId: string) => {
   return response.data;
 };
 
-// Cancel booking
 export const cancelBooking = async (bookingId: string) => {
   const response = await apiClient.post(
-    `/admin/booking/${bookingId}/cancel`
+    `/admin/booking/${bookingId}/cancel`,
+    {}   // 🔥 mandatory empty body
   );
   return response.data;
 };
 
-// Settle booking
 export const settleBooking = async (bookingId: string) => {
   const response = await apiClient.post(
-    `/admin/booking/${bookingId}/settled`
+    `/admin/booking/${bookingId}/settled`,
+    {}   // 🔥 mandatory empty body
   );
   return response.data;
 };
+
 
 // Helper to extract friendly error message
 export const getErrorMessage = (error: any): string => {
