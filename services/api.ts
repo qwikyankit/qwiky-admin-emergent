@@ -7,10 +7,14 @@ const TOKEN_STORAGE_KEY = 'qwiky_admin_token';
 const DEFAULT_TOKEN = process.env.EXPO_PUBLIC_QWIKY_TOKEN || '';
 
 // IMPORTANT: Must stay '/api' for Vercel rewrite to work
-const API_BASE_URL = '/api';
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  'https://api.qwiky.in/qwiky-service/api/v1';
 
 // Hardcoded Hood ID (as requested)
-const HOOD_ID = '4dd4d3a6-c0b3-4042-8e01-5b9299273ee1';
+const HOOD_ID =
+  process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID ||
+  '4dd4d3a6-c0b3-4042-8e01-5b9299273ee1';
 
 let currentToken = DEFAULT_TOKEN;
 
