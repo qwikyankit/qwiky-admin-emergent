@@ -9,6 +9,7 @@ import {
   Platform,
   BackHandler,
   Linking,
+  Share
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -181,6 +182,38 @@ export default function BookingDetail() {
     return user?.phone || user?.phoneNumber || user?.mobile || booking?.phone || 'N/A';
   };
 
+  const getGoogleMapLink = () => {
+  const addr = booking?.bookingAddress;
+  if (!addr?.latitude || !addr?.longitude) return '';
+
+  const lat = Number(addr.latitude).toFixed(6);
+  const lng = Number(addr.longitude).toFixed(6);
+
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+};
+
+
+const handleOpenDirections = () => {
+  const link = getGoogleMapLink();
+  if (link) {
+    Linking.openURL(link);
+  }
+};
+
+
+const handleShareLocation = async () => {
+  const link = getGoogleMapLink();
+  if (!link) return;
+
+  try {
+    await Share.share({
+      message: `Guest Location:\n${getAddress()}\n\nDirections:\n${link}`,
+    });
+  } catch (error) {
+    console.error('Share failed:', error);
+  }
+};
+
   const isSettled = booking?.status?.toUpperCase() === 'SETTLED';
   const isCancelled = booking?.status?.toUpperCase() === 'CANCELLED';
   const isFailed = booking?.status?.toUpperCase() === 'FAILED';
@@ -272,19 +305,58 @@ export default function BookingDetail() {
           </View>
         </View>
 
-        {/* Address Section */}
-        {booking.bookingAddress && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="location-outline" size={22} color={THEME.colors.primary} />
-              <Text style={styles.sectionTitle}>Booking Address</Text>
-            </View>
+       {/* Address Section */}
+{booking.bookingAddress && (
+  <View style={styles.section}>
+    <View style={styles.sectionHeader}>
+      <Ionicons
+        name="location-outline"
+        size={22}
+        color={THEME.colors.primary}
+      />
+      <Text style={styles.sectionTitle}>Booking Address</Text>
+    </View>
 
-            <View style={styles.infoCard}>
-              <Text style={styles.addressText}>{getAddress()}</Text>
-            </View>
-          </View>
-        )}
+    <View style={styles.infoCard}>
+      <Text style={styles.addressText}>{getAddress()}</Text>
+
+     {getGoogleMapLink() !== '' && (
+        <View style={styles.mapActionsInline}>
+          <TouchableOpacity
+            style={styles.mapButtonInline}
+            onPress={handleOpenDirections}
+          >
+            <Ionicons
+              name="navigate"
+              size={16}
+              color="#FFF"
+            />
+            <Text style={styles.mapButtonText}>
+              Directions
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.mapButtonInline,
+              styles.shareButton,
+            ]}
+            onPress={handleShareLocation}
+          >
+            <Ionicons
+              name="share-social"
+              size={16}
+              color="#FFF"
+            />
+            <Text style={styles.mapButtonText}>
+              Share
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  </View>
+)}
 
         {/* Guest Info Section */}
         <View style={styles.section}>
@@ -621,4 +693,30 @@ const styles = StyleSheet.create({
   disabledButtonText: {
     color: '#AAA',
   },
+  mapActionsInline: {
+  flexDirection: 'row',
+  marginTop: 12,
+  gap: 10,
+},
+
+mapButtonInline: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 8,
+  paddingHorizontal: 14,
+  borderRadius: 10,
+  backgroundColor: THEME.colors.primary,
+  gap: 6,
+},
+
+mapButtonText: {
+  color: '#FFF',
+  fontSize: 13,
+  fontWeight: '600',
+},
+shareButton: {
+  backgroundColor: THEME.colors.textSecondary,
+},
+
 });
