@@ -14,8 +14,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Toast from '../components/Toast';
-import { getToken, setToken, resetToken } from '../services/api';
+import { getToken, setToken, resetToken, fetchHoodDetails, updateHoodOperatingHours } from '../services/api';
 import THEME from '../constants/theme';
 
 export default function Settings() {
@@ -24,6 +25,10 @@ export default function Settings() {
   const [currentToken, setCurrentToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as const });
+  const [operatingHours, setOperatingHours] = useState([]);
+  const [showPicker, setShowPicker] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [timeType, setTimeType] = useState(null); // 'open' | 'close'
 
   // Handle Android back button
   useEffect(() => {
@@ -37,7 +42,30 @@ export default function Settings() {
 
   useEffect(() => {
     loadCurrentToken();
+    loadHoodOperatingHours()
   }, []);
+
+
+  const timeStringToDate = (timeStr) => {
+  const [hours, minutes] = timeStr.split(':');
+  const date = new Date();
+  date.setHours(parseInt(hours));
+  date.setMinutes(parseInt(minutes));
+  date.setSeconds(0);
+  return date;
+};
+
+const dateToTimeString = (date) => {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}:00`;
+};
+
+const openPicker = (index, type) => {
+  setSelectedIndex(index);
+  setTimeType(type);
+  setShowPicker(true);
+};
 
   const loadCurrentToken = async () => {
     const token = await getToken();
@@ -52,6 +80,41 @@ export default function Settings() {
       router.replace('/');
     }
   };
+
+  const loadHoodOperatingHours = async () => {
+  try {
+    const hood = await fetchHoodDetails();
+
+    if (hood?.hoodOperatingHours) {
+      // Sort by dayOfWeek (1 = Monday)
+      const sortedHours = hood.hoodOperatingHours
+        .map(h => ({
+          dayOfWeek: h.dayOfWeek,
+          isClosed: h.isClosed,
+          openTime: h.openTime,
+          closeTime: h.closeTime
+        }))
+        .sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+
+      setOperatingHours(sortedHours);
+    }
+
+  } catch (err) {
+    showToast('Failed to load operating hours', 'error');
+  }
+};
+
+const handleUpdateOperatingHours = async () => {
+  try {
+    setLoading(true);
+    await updateHoodOperatingHours(operatingHours);
+    showToast('Operating hours updated successfully!', 'success');
+  } catch (err) {
+    showToast('Failed to update operating hours', 'error');
+  } finally {
+    setLoading(false);
+  }
+}
 
   const handleSaveToken = async () => {
     if (!tokenInput.trim()) {
@@ -135,6 +198,89 @@ export default function Settings() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Operating Hours Section */}
+{/* OPERATING HOURS */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="time-outline" size={22} color={THEME.colors.primary} />
+              <Text style={styles.sectionTitle}>Operating Hours</Text>
+            </View>
+
+            <View style={styles.infoCard}>
+              {operatingHours.map((day, index) => (
+                <View key={day.dayOfWeek} style={styles.hourRow}>
+                  
+                  <Text style={styles.dayLabel}>
+                    {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][day.dayOfWeek - 1]}
+                  </Text>
+
+                  {day.isClosed ? (
+                    <Text style={styles.closedDayText}>Closed</Text>
+                  ) : (
+                    <View style={styles.timeContainer}>
+                      {Platform.OS === 'web' ? (
+                        <>
+                          <input
+                            type="time"
+                            value={day.openTime.slice(0, 5)}
+                            onChange={(e) => {
+                              const updated = [...operatingHours];
+                              updated[index].openTime = e.target.value + ':00';
+                              setOperatingHours(updated);
+                            }}
+                          />
+                          <Text style={styles.timeDash}>-</Text>
+                          <input
+                            type="time"
+                            value={day.closeTime.slice(0, 5)}
+                            onChange={(e) => {
+                              const updated = [...operatingHours];
+                              updated[index].closeTime = e.target.value + ':00';
+                              setOperatingHours(updated);
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <TouchableOpacity style={styles.timeBox} onPress={() => openPicker(index, 'open')}>
+                            <Text style={styles.timeText}>{day.openTime.slice(0, 5)}</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.timeDash}>-</Text>
+                          <TouchableOpacity style={styles.timeBox} onPress={() => openPicker(index, 'close')}>
+                            <Text style={styles.timeText}>{day.closeTime.slice(0, 5)}</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </View>
+                  )}
+
+                  {/* <TouchableOpacity
+                    onPress={() => {
+                      const updated = [...operatingHours];
+                      updated[index].isClosed = !updated[index].isClosed;
+                      setOperatingHours(updated);
+                    }}
+                    style={[styles.toggleButton, day.isClosed && styles.toggleButtonActive]}
+                  >
+                    <Text style={[styles.toggleText, day.isClosed && { color: '#FFF' }]}>
+                      {day.isClosed ? 'Closed' : 'Open'}
+                    </Text>
+                  </TouchableOpacity> */}
+
+                </View>
+              ))}
+
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton, { marginTop: 16 }]}
+                onPress={handleUpdateOperatingHours}
+                disabled={loading}
+              >
+                <Text style={styles.saveButtonText}>
+                  {loading ? 'Updating...' : 'Update Hours'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           {/* Token Management Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -239,6 +385,36 @@ export default function Settings() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      {showPicker && Platform.OS !== 'web' && selectedIndex !== null && (
+  <DateTimePicker
+    value={timeStringToDate(
+      timeType === 'open'
+        ? operatingHours[selectedIndex].openTime
+        : operatingHours[selectedIndex].closeTime
+    )}
+    mode="time"
+    is24Hour={true}
+    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+    onChange={(event, selectedDate) => {
+      if (Platform.OS === 'android') {
+        setShowPicker(false);
+      }
+
+      if (selectedDate) {
+        const updated = [...operatingHours];
+        const formatted = dateToTimeString(selectedDate);
+
+        if (timeType === 'open') {
+          updated[selectedIndex].openTime = formatted;
+        } else {
+          updated[selectedIndex].closeTime = formatted;
+        }
+
+        setOperatingHours(updated);
+      }
+    }}
+  />
+)}
     </SafeAreaView>
   );
 }
@@ -435,4 +611,72 @@ const styles = StyleSheet.create({
     color: THEME.colors.text,
     fontWeight: '500',
   },
+  hourRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 12,
+},
+
+dayLabel: {
+  width: 50,
+  fontSize: 14,
+  color: THEME.colors.text,
+},
+
+timeInput: {
+  backgroundColor: '#F5F5F5',
+  borderRadius: 8,
+  paddingVertical: 6,
+  paddingHorizontal: 8,
+  fontSize: 12,
+  width: 80,
+  textAlign: 'center',
+},
+
+closedToggle: {
+  marginLeft: 8,
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 8,
+  backgroundColor: '#F5F5F5',
+},
+
+closedToggleActive: {
+  backgroundColor: THEME.colors.cancelled,
+},
+
+closedText: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: THEME.colors.textSecondary,
+},hourRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 14,
+},
+
+dayLabel: {
+  width: 45,
+  fontSize: 14,
+  fontWeight: '600',
+  color: THEME.colors.text,
+},
+
+timeDash: {
+  marginHorizontal: 6,
+},
+
+closedDayText: {
+  flex: 1,
+  textAlign: 'center',
+  fontWeight: '600',
+  color: THEME.colors.cancelled,
+},
+  timeContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center' },
+  timeBox: { backgroundColor: '#F2F4F7', padding: 8, borderRadius: 10, minWidth: 70, alignItems: 'center' },
+  timeText: { fontWeight: '600' },
+  toggleButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#EEE' },
+  toggleButtonActive: { backgroundColor: THEME.colors.cancelled },
+  toggleText: { fontSize: 12, fontWeight: '600' },
 });

@@ -163,6 +163,24 @@ export const settleBooking = async (bookingId: string) => {
   return response.data;
 };
 
+// Fetch hood details including operating hours
+export const fetchHoodDetails = async () => {
+  const response = await apiClient.get(`/hoods/${HOOD_ID}`);
+  return response.data;
+};
+
+
+// Update hood operating hours (single day or full week)
+export const updateHoodOperatingHours = async (payload) => {
+  const body = Array.isArray(payload) ? payload : [payload];
+
+  const response = await apiClient.put(
+    `/hoods/${HOOD_ID}/operating-hours`,
+    body
+  );
+
+  return response.data;
+};
 
 // Helper to extract friendly error message
 export const getErrorMessage = (error: any): string => {
