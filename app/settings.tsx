@@ -253,20 +253,57 @@ const handleUpdateOperatingHours = async () => {
                       )}
                     </View>
                   )}
+                  <View style={styles.switchContainer}>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      disabled={loading}
+                      onPress={async () => {
+                        const previousState = operatingHours[index];
 
-                  {/* <TouchableOpacity
-                    onPress={() => {
-                      const updated = [...operatingHours];
-                      updated[index].isClosed = !updated[index].isClosed;
-                      setOperatingHours(updated);
-                    }}
-                    style={[styles.toggleButton, day.isClosed && styles.toggleButtonActive]}
-                  >
-                    <Text style={[styles.toggleText, day.isClosed && { color: '#FFF' }]}>
-                      {day.isClosed ? 'Closed' : 'Open'}
-                    </Text>
-                  </TouchableOpacity> */}
+                        const updatedDay = {
+                          ...previousState,
+                          isClosed: !previousState.isClosed,
+                        };
 
+                        const updatedHours = [...operatingHours];
+                        updatedHours[index] = updatedDay;
+                        setOperatingHours(updatedHours);
+
+                        try {
+                          setLoading(true);
+                          await updateHoodOperatingHours([updatedDay]);
+
+                          showToast(
+                            updatedDay.isClosed
+                              ? 'Hood closed successfully'
+                              : 'Hood opened successfully',
+                            'success'
+                          );
+                        } catch (err) {
+                          const reverted = [...operatingHours];
+                          reverted[index] = previousState;
+                          setOperatingHours(reverted);
+                          showToast('Failed to update hood status', 'error');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      style={[
+                        styles.switchTrack,
+                        day.isClosed ? styles.switchTrackInactive : styles.switchTrackActive,
+                        loading && { opacity: 0.6 }
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.switchThumb,
+                          day.isClosed
+                            ? styles.switchThumbLeft
+                            : styles.switchThumbRight,
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
 
@@ -611,18 +648,6 @@ const styles = StyleSheet.create({
     color: THEME.colors.text,
     fontWeight: '500',
   },
-  hourRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  marginBottom: 12,
-},
-
-dayLabel: {
-  width: 50,
-  fontSize: 14,
-  color: THEME.colors.text,
-},
-
 timeInput: {
   backgroundColor: '#F5F5F5',
   borderRadius: 8,
@@ -655,18 +680,15 @@ closedText: {
   justifyContent: 'space-between',
   marginBottom: 14,
 },
-
 dayLabel: {
   width: 45,
   fontSize: 14,
   fontWeight: '600',
   color: THEME.colors.text,
 },
-
 timeDash: {
   marginHorizontal: 6,
 },
-
 closedDayText: {
   flex: 1,
   textAlign: 'center',
@@ -679,4 +701,42 @@ closedDayText: {
   toggleButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#EEE' },
   toggleButtonActive: { backgroundColor: THEME.colors.cancelled },
   toggleText: { fontSize: 12, fontWeight: '600' },
+  switchContainer: {
+  marginLeft: 12,
+},
+  switchTrack: {
+    width: 50,
+    height: 28,
+    borderRadius: 20,
+    padding: 3,
+    justifyContent: 'center',
+  },
+
+  switchTrackActive: {
+    backgroundColor: '#2E7D32', // Green (Open)
+  },
+
+  switchTrackInactive: {
+    backgroundColor: '#C62828', // Red (Closed)
+  },
+
+  switchThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+
+  switchThumbRight: {
+    alignSelf: 'flex-end',
+  },
+
+  switchThumbLeft: {
+    alignSelf: 'flex-start',
+  }
 });
