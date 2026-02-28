@@ -122,22 +122,24 @@ export const resetToken = async (): Promise<void> => {
   }
 };
 
-// --------------------
-// API FUNCTIONS
-// --------------------
+// Fetch all hoods
+export const fetchHoods = async () => {
+  const response = await apiClient.get('/hoods');
+  return response.data;
+};
 
 // Fetch bookings with pagination
 export const fetchBookings = async (
+  hoodId: string = HOOD_ID,
   page: number = 0,
   size: number = 20
 ): Promise<PaginatedResponse> => {
   const response = await apiClient.get(
-    `/admin/booking/hood/${HOOD_ID}`,
+    `/admin/booking/hood/${hoodId}`,
     {
       params: { page, size },
     }
   );
-
   return response.data;
 };
 
@@ -164,23 +166,29 @@ export const settleBooking = async (bookingId: string) => {
 };
 
 // Fetch hood details including operating hours
-export const fetchHoodDetails = async () => {
-  const response = await apiClient.get(`/hoods/${HOOD_ID}`);
+export const fetchHoodDetails = async (
+  hoodId: string = HOOD_ID
+) => {
+  const response = await apiClient.get(`/hoods/${hoodId}`);
   return response.data;
 };
 
-
 // Update hood operating hours (single day or full week)
-export const updateHoodOperatingHours = async (payload) => {
+export const updateHoodOperatingHours = async (
+  payload: any,
+  hoodId: string = HOOD_ID
+) => {
   const body = Array.isArray(payload) ? payload : [payload];
 
   const response = await apiClient.put(
-    `/hoods/${HOOD_ID}/operating-hours`,
+    `/hoods/${hoodId}/operating-hours`,
     body
   );
 
   return response.data;
 };
+
+
 
 // Helper to extract friendly error message
 export const getErrorMessage = (error: any): string => {

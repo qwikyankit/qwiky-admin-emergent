@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Toast from '../components/Toast';
 import { getToken, setToken, resetToken, fetchHoodDetails, updateHoodOperatingHours } from '../services/api';
@@ -30,6 +30,8 @@ export default function Settings() {
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [timeType, setTimeType] = useState(null); // 'open' | 'close'
 
+  const { hoodId, hoodName } = useLocalSearchParams();
+
   // Handle Android back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -42,8 +44,13 @@ export default function Settings() {
 
   useEffect(() => {
     loadCurrentToken();
-    loadHoodOperatingHours()
   }, []);
+
+  useEffect(() => {
+    if (hoodId) {
+      loadHoodOperatingHours();
+    }
+  }, [hoodId]);
 
 
   const timeStringToDate = (timeStr) => {
@@ -83,8 +90,7 @@ const openPicker = (index, type) => {
 
   const loadHoodOperatingHours = async () => {
   try {
-    const hood = await fetchHoodDetails();
-
+    const hood = await fetchHoodDetails(hoodId as string);
     if (hood?.hoodOperatingHours) {
       // Sort by dayOfWeek (1 = Monday)
       const sortedHours = hood.hoodOperatingHours
@@ -107,7 +113,7 @@ const openPicker = (index, type) => {
 const handleUpdateOperatingHours = async () => {
   try {
     setLoading(true);
-    await updateHoodOperatingHours(operatingHours);
+    await updateHoodOperatingHours(operatingHours, hoodId as string);
     showToast('Operating hours updated successfully!', 'success');
   } catch (err) {
     showToast('Failed to update operating hours', 'error');
@@ -185,7 +191,9 @@ const handleUpdateOperatingHours = async () => {
         >
           <Ionicons name="arrow-back" size={24} color={THEME.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
+        <Text style={styles.headerTitle}>
+    {hoodName ? `${hoodName} Settings` : 'Settings'}
+  </Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -271,7 +279,7 @@ const handleUpdateOperatingHours = async () => {
 
                         try {
                           setLoading(true);
-                          await updateHoodOperatingHours([updatedDay]);
+                          await updateHoodOperatingHours([updatedDay], hoodId as string);
 
                           showToast(
                             updatedDay.isClosed

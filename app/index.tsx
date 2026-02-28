@@ -22,8 +22,12 @@ import EmptyState from '../components/EmptyState';
 import ErrorState from '../components/ErrorState';
 import Toast from '../components/Toast';
 import NewBookingBanner from '../components/NewBookingBanner';
-import { fetchBookings, fetchBookingsCount, getErrorMessage } from '../services/api';
-import THEME from '../constants/theme';
+import { 
+  fetchBookings, 
+  fetchBookingsCount, 
+  fetchHoods,
+  getErrorMessage 
+} from '../services/api';import THEME from '../constants/theme';
 
 const STATUS_FILTERS = ['ALL', 'CONFIRMED', 'SETTLED', 'CANCELLED', 'FAILED', 'PAYMENT_PENDING'];
 const PAGE_SIZE = 20;
@@ -46,13 +50,18 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  
+  const [showHoodDropdown, setShowHoodDropdown] = useState(false);
   // New booking notification
   const [newBookingsCount, setNewBookingsCount] = useState(0);
   const lastKnownCount = useRef(0);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef(AppState.currentState);
 
+  const [hoods, setHoods] = useState([]);
+  const [selectedHoodId, setSelectedHoodId] = useState(null);
+  const [selectedHoodName, setSelectedHoodName] = useState('');
+  const DEFAULT_HOOD_ID = process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID;
+console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
   // Handle Android back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -97,6 +106,7 @@ export default function Home() {
     pollingRef.current = setInterval(checkForNewBookings, POLLING_INTERVAL);
   };
 
+  
   const stopPolling = () => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -106,7 +116,7 @@ export default function Home() {
 
   const checkForNewBookings = async () => {
     try {
-      const { totalCount } = await fetchBookingsCount();
+      const { totalCount } = await fetchBookingsCount(selectedHoodId);
       if (lastKnownCount.current > 0 && totalCount > lastKnownCount.current) {
         setNewBookingsCount(totalCount - lastKnownCount.current);
       }
@@ -114,6 +124,25 @@ export default function Home() {
       // Silent fail for polling
     }
   };
+
+  const loadHoods = async () => {
+  try {
+    const data = await fetchHoods();
+    setHoods(data || []);
+
+    // Set default hood
+    const defaultHood =
+      data.find((h: any) => h.id === DEFAULT_HOOD_ID) ||
+      data[0];
+
+    if (defaultHood) {
+      setSelectedHoodId(defaultHood.id);
+      setSelectedHoodName(defaultHood.name);
+    }
+  } catch (err: any) {
+    showToast(getErrorMessage(err), 'error');
+  }
+};
 
   const loadBookings = async (page: number = 0, append: boolean = false) => {
     try {
@@ -125,9 +154,13 @@ export default function Home() {
       }
       setError(null);
       
-      const data = await fetchBookings(page, PAGE_SIZE);
-      const bookingsList = data?._embedded?.bookingDetailsResponses || [];
-      const pageInfo = data?.page || {};
+    const data = await fetchBookings(
+      selectedHoodId,
+      page,
+      PAGE_SIZE
+    );  
+    const bookingsList = data?._embedded?.bookingDetailsResponses || [];
+    const pageInfo = data?.page || {};
       
       setTotalPages(pageInfo.totalPages || 0);
       setTotalElements(pageInfo.totalElements || 0);
@@ -173,8 +206,14 @@ export default function Home() {
   };
 
   useEffect(() => {
-    loadBookings();
+   loadHoods();
   }, []);
+
+  useEffect(() => {
+  if (selectedHoodId) {
+    loadBookings(0, false);
+  }
+}, [selectedHoodId]);
 
   const filterBookings = (data: any[], search: string, status: string) => {
     let filtered = [...data];
@@ -236,7 +275,15 @@ export default function Home() {
             </View>
             <TouchableOpacity
               style={styles.settingsButton}
-              onPress={() => router.push('/settings')}
+              onPress={() =>
+                router.push({
+                  pathname: '/settings',
+                  params: {
+                    hoodId: selectedHoodId,
+                    hoodName: selectedHoodName,
+                  },
+                })
+              }
             >
               <Ionicons name="settings-outline" size={24} color={THEME.colors.textSecondary} />
             </TouchableOpacity>
@@ -258,7 +305,15 @@ export default function Home() {
             </View>
             <TouchableOpacity
               style={styles.settingsButton}
-              onPress={() => router.push('/settings')}
+              onPress={() =>
+                router.push({
+                  pathname: '/settings',
+                  params: {
+                    hoodId: selectedHoodId,
+                    hoodName: selectedHoodName,
+                  },
+                })
+              }
             >
               <Ionicons name="settings-outline" size={24} color={THEME.colors.textSecondary} />
             </TouchableOpacity>
@@ -301,12 +356,58 @@ export default function Home() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.settingsButton}
-              onPress={() => router.push('/settings')}
+              disabled={!selectedHoodId}
+              onPress={() =>
+                router.push({
+                  pathname: '/settings',
+                  params: {
+                    hoodId: selectedHoodId,
+                    hoodName: selectedHoodName,
+                  },
+                })
+              }
             >
               <Ionicons name="settings-outline" size={24} color={THEME.colors.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
+      </View>
+
+      {/* Hood Dropdown */}
+      <View style={styles.hoodDropdownWrapper}>
+        <TouchableOpacity
+          style={styles.hoodDropdownButton}
+          onPress={() => setShowHoodDropdown(!showHoodDropdown)}
+        >
+          <Text style={styles.hoodDropdownText}>
+            {selectedHoodName || 'Select Hood'}
+          </Text>
+          <Ionicons
+            name={showHoodDropdown ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color="#FFF"
+          />
+        </TouchableOpacity>
+
+        {showHoodDropdown && (
+          <View style={styles.hoodDropdownList}>
+            {hoods.map((hood: any) => (
+              <TouchableOpacity
+                key={hood.id}
+                style={styles.hoodDropdownItem}
+                onPress={() => {
+                  setSelectedHoodId(hood.id);
+                  setSelectedHoodName(hood.name);
+                  setShowHoodDropdown(false);
+                }}
+              >
+                <Text style={styles.hoodDropdownItemText}>
+                  {hood.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Search Input */}
@@ -538,4 +639,70 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: THEME.colors.textMuted,
   },
+    hoodSelectorContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: THEME.colors.surface,
+  },
+  hoodChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    marginRight: 8,
+  },
+
+  hoodChipActive: {
+    backgroundColor: THEME.colors.primary,
+  },
+
+  hoodChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: THEME.colors.textSecondary,
+  },
+
+  hoodChipTextActive: {
+    color: '#FFF',
+  },
+  hoodDropdownWrapper: {
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  backgroundColor: THEME.colors.surface,
+},
+hoodDropdownButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  backgroundColor: THEME.colors.primary,
+  paddingVertical: 10,
+  paddingHorizontal: 16,
+  borderRadius: 24,
+},
+
+hoodDropdownText: {
+  color: '#FFF',
+  fontWeight: '600',
+  fontSize: 14,
+},
+
+hoodDropdownList: {
+  marginTop: 8,
+  backgroundColor: '#FFF',
+  borderRadius: 12,
+  elevation: 3,
+  overflow: 'hidden',
+},
+
+hoodDropdownItem: {
+  paddingVertical: 12,
+  paddingHorizontal: 16,
+  borderBottomWidth: 1,
+  borderBottomColor: '#F1F1F1',
+},
+
+hoodDropdownItemText: {
+  fontSize: 14,
+  color: THEME.colors.text,
+},
 });
