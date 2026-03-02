@@ -8,7 +8,6 @@ import {
   RefreshControl,
   TouchableOpacity,
   Platform,
-  AppState,
   ActivityIndicator,
   BackHandler,
   Alert,
@@ -23,15 +22,13 @@ import ErrorState from '../components/ErrorState';
 import Toast from '../components/Toast';
 import NewBookingBanner from '../components/NewBookingBanner';
 import { 
-  fetchBookings, 
-  fetchBookingsCount, 
+  fetchBookings,  
   fetchHoods,
   getErrorMessage 
 } from '../services/api';import THEME from '../constants/theme';
 
 const STATUS_FILTERS = ['ALL', 'CONFIRMED', 'SETTLED', 'CANCELLED', 'FAILED', 'PAYMENT_PENDING'];
 const PAGE_SIZE = 20;
-const POLLING_INTERVAL = 30000; // 30 seconds
 
 export default function Home() {
   const router = useRouter();
@@ -54,14 +51,13 @@ export default function Home() {
   // New booking notification
   const [newBookingsCount, setNewBookingsCount] = useState(0);
   const lastKnownCount = useRef(0);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const appStateRef = useRef(AppState.currentState);
 
   const [hoods, setHoods] = useState([]);
   const [selectedHoodId, setSelectedHoodId] = useState(null);
   const [selectedHoodName, setSelectedHoodName] = useState('');
   const DEFAULT_HOOD_ID = process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID;
-console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
+  console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
+
   // Handle Android back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -79,51 +75,21 @@ console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
     return () => backHandler.remove();
   }, []);
 
-  // App state change handler for polling
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (
-        appStateRef.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        // App has come to foreground - check for new bookings
-        checkForNewBookings();
-      }
-      appStateRef.current = nextAppState;
-    });
+    if (selectedHoodId) {
+      loadBookings(0, false);
+    }
+  }, [selectedHoodId]);
 
-    return () => subscription.remove();
+  useEffect(() => {
+    filterBookings(bookings, searchQuery, activeFilter);
+  }, [bookings, searchQuery, activeFilter]);
+
+
+  useEffect(() => {
+   loadHoods();
   }, []);
 
-  // Start polling when component mounts
-  useEffect(() => {
-    startPolling();
-    return () => stopPolling();
-  }, []);
-
-  const startPolling = () => {
-    stopPolling();
-    pollingRef.current = setInterval(checkForNewBookings, POLLING_INTERVAL);
-  };
-
-  
-  const stopPolling = () => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  };
-
-  const checkForNewBookings = async () => {
-    try {
-      const { totalCount } = await fetchBookingsCount(selectedHoodId);
-      if (lastKnownCount.current > 0 && totalCount > lastKnownCount.current) {
-        setNewBookingsCount(totalCount - lastKnownCount.current);
-      }
-    } catch (err) {
-      // Silent fail for polling
-    }
-  };
 
   const loadHoods = async () => {
   try {
@@ -145,6 +111,11 @@ console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
 };
 
   const loadBookings = async (page: number = 0, append: boolean = false) => {
+      // 🔒 Prevent calling API with null hood
+      if (!selectedHoodId) {
+        console.log('Skipping fetchBookings: selectedHoodId not ready');
+        return;
+      }
     try {
       if (!append) {
         setLoading(true);
@@ -161,10 +132,10 @@ console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
     );  
     const bookingsList = data?._embedded?.bookingDetailsResponses || [];
     const pageInfo = data?.page || {};
-      
+    const total = pageInfo.totalPages ?? 0;
       setTotalPages(pageInfo.totalPages || 0);
       setTotalElements(pageInfo.totalElements || 0);
-      setHasMore((page + 1) < (pageInfo.totalPages || 0));
+      setHasMore(page < total - 1);
       setCurrentPage(page);
       
       // Update last known count
@@ -172,12 +143,9 @@ console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
       setNewBookingsCount(0);
       
       if (append) {
-        const newBookings = [...bookings, ...bookingsList];
-        setBookings(newBookings);
-        filterBookings(newBookings, searchQuery, activeFilter);
+        setBookings(prev => [...prev, ...bookingsList]);
       } else {
         setBookings(bookingsList);
-        filterBookings(bookingsList, searchQuery, activeFilter);
       }
     } catch (err: any) {
       console.error('Failed to fetch bookings:', err);
@@ -190,31 +158,25 @@ console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
   };
 
   const loadMore = () => {
-    if (!loadingMore && hasMore && !loading) {
-      loadBookings(currentPage + 1, true);
-    }
+    if (!selectedHoodId) return;
+    if (loadingMore || loading) return;
+    if (!hasMore) return;
+
+    loadBookings(currentPage + 1, true);
   };
 
   const onRefresh = useCallback(() => {
+    if (!selectedHoodId) return;
+
     setRefreshing(true);
     setNewBookingsCount(0);
     loadBookings(0, false);
-  }, []);
+  }, [selectedHoodId]);
 
   const handleNewBookingsBannerPress = () => {
     onRefresh();
   };
-
-  useEffect(() => {
-   loadHoods();
-  }, []);
-
-  useEffect(() => {
-  if (selectedHoodId) {
-    loadBookings(0, false);
-  }
-}, [selectedHoodId]);
-
+ 
   const filterBookings = (data: any[], search: string, status: string) => {
     let filtered = [...data];
 
@@ -240,12 +202,10 @@ console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
-    filterBookings(bookings, text, activeFilter);
   };
 
   const handleFilterChange = (filter: string) => {
     setActiveFilter(filter);
-    filterBookings(bookings, searchQuery, filter);
   };
 
   const handleBookingPress = (booking: any) => {
