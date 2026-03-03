@@ -230,7 +230,7 @@ const handleUpdateOperatingHours = async () => {
                         <>
                           <input
                             type="time"
-                            value={day.openTime.slice(0, 5)}
+                            value={day.openTime ? day.openTime.slice(0, 5) : ''}
                             onChange={(e) => {
                               const updated = [...operatingHours];
                               updated[index].openTime = e.target.value + ':00';
@@ -240,7 +240,7 @@ const handleUpdateOperatingHours = async () => {
                           <Text style={styles.timeDash}>-</Text>
                           <input
                             type="time"
-                            value={day.closeTime.slice(0, 5)}
+                            value={day.closeTime ? day.closeTime.slice(0, 5) : ''}
                             onChange={(e) => {
                               const updated = [...operatingHours];
                               updated[index].closeTime = e.target.value + ':00';

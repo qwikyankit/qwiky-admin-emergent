@@ -74,6 +74,7 @@ apiClient.interceptors.response.use(
   }
 );
 
+
 // --------------------
 // TYPES
 // --------------------
@@ -186,6 +187,46 @@ export const updateHoodOperatingHours = async (
   );
 
   return response.data;
+};
+
+// 1️⃣ Validate User
+export const validateUserByMobile = async (mobile) => {
+  try {
+    const res = await apiClient.get(
+      `/admin/user/mobileNumber/${mobile}`
+    );
+    return res.data;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+// 2️⃣ Fetch Hood Items
+export const fetchHoodItems = async (hoodId) => {
+  const res = await apiClient.get(
+    `/hood-items/hood/${hoodId}`
+  );
+  return res.data;
+};
+
+// 3️⃣ Fetch Slots
+export const fetchSlots = async (hoodItemId, date) => {
+  const res = await apiClient.get(
+    `/slots/hoodItemId/${hoodItemId}/date/${date}`
+  );
+  return res.data;
+};
+
+// 4️⃣ Create Assisted Booking
+export const createAssistedBooking = async (body) => {
+  const res = await apiClient.post(
+    `/admin/booking/create`,
+    body
+  );
+  return res.data;
 };
 
 

@@ -315,6 +315,18 @@ export default function Home() {
               )}
             </TouchableOpacity>
             <TouchableOpacity
+              style={styles.assistedButton}
+              disabled={!selectedHoodId}
+              onPress={() =>
+                router.push({
+                  pathname: '/assisted-booking',
+                  params: { hoodId: selectedHoodId }
+                })
+              }
+            >
+            <Ionicons name="add-circle-outline" size={24} color={THEME.colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.settingsButton}
               disabled={!selectedHoodId}
               onPress={() =>
@@ -664,5 +676,10 @@ hoodDropdownItem: {
 hoodDropdownItemText: {
   fontSize: 14,
   color: THEME.colors.text,
+},
+assistedButton: {
+  padding: 8,
+  borderRadius: 12,
+  backgroundColor: '#EEF2FF',
 },
 });
