@@ -223,12 +223,11 @@ export const fetchSlots = async (hoodItemId, date) => {
 // 4️⃣ Create Assisted Booking
 export const createAssistedBooking = async (body) => {
   const res = await apiClient.post(
-    `/admin/booking/create`,
+    `/admin/bookings/create`,
     body
   );
   return res.data;
 };
-
 
 
 // Helper to extract friendly error message
