@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import StatusBadge from './StatusBadge';
+import { addBookingToCalendar, resolveBookingAddress } from '../utils/helpers';
 import THEME from '../constants/theme';
 
 interface BookingCardProps {
@@ -62,6 +63,20 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onPress }) => {
     return booking.serviceType || booking.serviceName;
   };
 
+const isConfirmed = booking?.status?.toUpperCase() === 'CONFIRMED';
+
+const handleAddCalendar = async (e) => {
+  e.stopPropagation?.();
+    console.log("Calendar button pressed");
+
+  const address = await resolveBookingAddress(booking);
+
+  await addBookingToCalendar({
+    booking,
+    address
+  });
+};
+
   return (
     <TouchableOpacity 
       style={styles.card} 
@@ -72,13 +87,25 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onPress }) => {
       accessibilityRole="button"
     >
       <View style={styles.header}>
-        <View style={styles.idContainer}>
-          <Ionicons name="receipt-outline" size={18} color={THEME.colors.primary} />
-          <Text style={styles.bookingCode} numberOfLines={1}>
-            {booking.bookingCode || booking.bookingId?.substring(0, 8) || 'N/A'}
-          </Text>
-        </View>
-        <StatusBadge status={booking.status} />
+      <View style={styles.idContainer}>
+      <Ionicons name="receipt-outline" size={18} color={THEME.colors.primary} />
+      <Text style={styles.bookingCode}>
+      {booking.bookingCode}
+      </Text>
+      </View>
+      <View style={styles.headerActions}>
+      {isConfirmed && (
+      <TouchableOpacity
+      onPress={handleAddCalendar}
+      style={styles.calendarIcon}
+      >
+      <Ionicons name="calendar-outline" size={18} color={THEME.colors.textMuted}/>
+      </TouchableOpacity>
+      )}
+      <StatusBadge status={booking.status} />
+
+      </View>
+
       </View>
 
       <View style={styles.divider} />
@@ -126,7 +153,6 @@ const BookingCard: React.FC<BookingCardProps> = ({ booking, onPress }) => {
           </Text>
         </View>
       </View>
-
       <View style={styles.footer}>
         <Text style={styles.viewDetails}>View Details</Text>
         <Ionicons name="chevron-forward" size={18} color={THEME.colors.primary} />
@@ -218,6 +244,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: 4,
   },
+headerActions:{
+flexDirection:'row',
+alignItems:'center',
+gap:8
+},
+
+calendarIcon:{
+padding:4,
+opacity:0.7
+}
 });
 
 export default BookingCard;
