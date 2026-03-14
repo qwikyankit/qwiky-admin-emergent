@@ -13,54 +13,6 @@ const formatTime = (date: Date) =>
     hour12: true
   });
 
-const generateICS = ({
-  booking,
-  user,
-  address,
-  phone,
-  recordService,
-  amount,
-  mapLink,
-}) => {
-
-  const slotStart = booking?.services?.[0]?.slotStart;
-  if (!slotStart) return null;
-
-  const start = new Date(slotStart);
-  const end = new Date(start.getTime() + 75 * 60000);
-
-  const formatICSDate = (date) =>
-    date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-
-  const description =
-`Customer: ${user || "N/A"}
-Phone: ${phone || "N/A"}
-
-Amount: ₹${amount ?? "0"}
-
-Record Service: ${recordService ? "Yes" : "No"}
-
-Address:
-${address || "N/A"}
-
-Google Maps:
-${mapLink || "N/A"}
-
-Booking ID:
-${booking?.bookingId || "N/A"}`;
-
-  return `BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-SUMMARY:Qwiky | ${booking.bookingCode}
-DESCRIPTION:${description.replace(/\n/g, "\\n")}
-LOCATION:${address || ""}
-DTSTART:${formatICSDate(start)}
-DTEND:${formatICSDate(end)}
-END:VEVENT
-END:VCALENDAR`;
-};
-
 export const openCalendarEvent = async ({
   booking,
   user,
@@ -106,7 +58,7 @@ ${booking?.bookingId || 'N/A'}`
 
   const location = encodeURIComponent(address || '');
 
-  const url =
+  const googleUrl =
     `https://calendar.google.com/calendar/render?action=TEMPLATE` +
     `&text=${title}` +
     `&dates=${startStr}/${endStr}` +
@@ -115,34 +67,55 @@ ${booking?.bookingId || 'N/A'}`
     `&src=${CALENDAR_EMAIL}`;
 
   try {
-    const supported = await Linking.canOpenURL(url);
+    const supported = await Linking.canOpenURL(googleUrl);
 
     if (supported) {
-      await Linking.openURL(url);
+      await Linking.openURL(googleUrl);
       return;
     }
-
-  } catch (e) {
-    console.log("Calendar URL failed, fallback to ICS");
+  } catch (err) {
+    console.log("Google calendar open failed, using ICS fallback");
   }
 
-  // Fallback for mobile PWA
-  const icsContent = generateICS({
-    booking,
-    user,
-    address,
-    phone,
-    recordService,
-    amount,
-    mapLink,
-  });
+  // ---------- PWA / Mobile fallback using ICS ----------
 
-  if (!icsContent) return;
+  const formatICSDate = (date) =>
+    date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 
-  const blob = new Blob([icsContent], { type: "text/calendar" });
-  const fileURL = URL.createObjectURL(blob);
+  const description =
+`Customer: ${user || "N/A"}
+Phone: ${phone || "N/A"}
 
-  await Linking.openURL(fileURL);
+Amount: ₹${amount ?? "0"}
+
+Record Service: ${recordService ? "Yes" : "No"}
+
+Address:
+${address || "N/A"}
+
+Google Maps:
+${mapLink || "N/A"}
+
+Booking ID:
+${booking?.bookingId || "N/A"}`;
+
+  const icsContent =
+`BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+SUMMARY:Qwiky | ${slotTime} | ${booking.bookingCode}
+DESCRIPTION:${description.replace(/\n/g, "\\n")}
+LOCATION:${address || ""}
+DTSTART:${formatICSDate(start)}
+DTEND:${formatICSDate(end)}
+END:VEVENT
+END:VCALENDAR`;
+
+  const icsUrl =
+    "data:text/calendar;charset=utf8," +
+    encodeURIComponent(icsContent);
+
+  await Linking.openURL(icsUrl);
 };
 
 export const createCalendarEvent = async ({
