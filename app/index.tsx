@@ -55,8 +55,8 @@ export default function Home() {
   const [hoods, setHoods] = useState([]);
   const [selectedHoodId, setSelectedHoodId] = useState(null);
   const [selectedHoodName, setSelectedHoodName] = useState('');
+  const [showTodayOnly, setShowTodayOnly] = useState(true);
   const DEFAULT_HOOD_ID = process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID;
-  console.log('Default Hood ID from env:', DEFAULT_HOOD_ID);
 
   // Handle Android back button
   useEffect(() => {
@@ -81,9 +81,9 @@ export default function Home() {
     }
   }, [selectedHoodId]);
 
-  useEffect(() => {
-    filterBookings(bookings, searchQuery, activeFilter);
-  }, [bookings, searchQuery, activeFilter]);
+ useEffect(() => {
+  filterBookings(bookings, searchQuery, activeFilter);
+}, [bookings, searchQuery, activeFilter, showTodayOnly]);
 
 
   useEffect(() => {
@@ -177,28 +177,47 @@ export default function Home() {
     onRefresh();
   };
  
-  const filterBookings = (data: any[], search: string, status: string) => {
-    let filtered = [...data];
+  const filterBookings = (data, search, status) => {
+  let filtered = [...data];
 
-    if (status !== 'ALL') {
-      filtered = filtered.filter(
-        (b) => b.status?.toUpperCase() === status.toUpperCase()
-      );
-    }
+  // STATUS FILTER
+  if (status !== 'ALL') {
+    filtered = filtered.filter(
+      (b) => b.status?.toUpperCase() === status.toUpperCase()
+    );
+  }
 
-    if (search.trim()) {
-      const searchLower = search.toLowerCase().trim();
-      filtered = filtered.filter(
-        (b) =>
-          b.bookingId?.toLowerCase().includes(searchLower) ||
-          b.bookingCode?.toLowerCase().includes(searchLower) ||
-          b.phone?.toLowerCase().includes(searchLower) ||
-          b.userId?.toLowerCase().includes(searchLower)
-      );
-    }
+  // TODAY FILTER
+  if (showTodayOnly) {
+    const today = new Date();
+    today.setHours(0,0,0,0);
 
-    setFilteredBookings(filtered);
-  };
+    filtered = filtered.filter((b) => {
+      const slotStart = b?.services?.[0]?.slotStart;
+      if (!slotStart) return false;
+
+      const bookingDate = new Date(slotStart);
+      bookingDate.setHours(0,0,0,0);
+
+      return bookingDate.getTime() === today.getTime();
+    });
+  }
+
+  // SEARCH FILTER
+  if (search.trim()) {
+    const searchLower = search.toLowerCase().trim();
+
+    filtered = filtered.filter(
+      (b) =>
+        b.bookingId?.toLowerCase().includes(searchLower) ||
+        b.bookingCode?.toLowerCase().includes(searchLower) ||
+        b.phone?.toLowerCase().includes(searchLower) ||
+        b.userId?.toLowerCase().includes(searchLower)
+    );
+  }
+
+  setFilteredBookings(filtered);
+};
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
@@ -402,6 +421,44 @@ export default function Home() {
       </View>
 
       {/* Status Filter Chips */}
+      {/* Today Toggle */}
+<View style={styles.todayToggleContainer}>
+
+  <TouchableOpacity
+    style={[
+      styles.todayToggle,
+      showTodayOnly && styles.todayToggleActive
+    ]}
+    onPress={() => setShowTodayOnly(true)}
+  >
+    <Text
+      style={[
+        styles.todayToggleText,
+        showTodayOnly && styles.todayToggleTextActive
+      ]}
+    >
+      Today
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    style={[
+      styles.todayToggle,
+      !showTodayOnly && styles.todayToggleActive
+    ]}
+    onPress={() => setShowTodayOnly(false)}
+  >
+    <Text
+      style={[
+        styles.todayToggleText,
+        !showTodayOnly && styles.todayToggleTextActive
+      ]}
+    >
+      All
+    </Text>
+  </TouchableOpacity>
+
+</View>
       <View style={styles.filterContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {STATUS_FILTERS.map((filter) => (
@@ -681,5 +738,33 @@ assistedButton: {
   padding: 8,
   borderRadius: 12,
   backgroundColor: '#EEF2FF',
+},
+todayToggleContainer: {
+  flexDirection: 'row',
+  paddingHorizontal: 16,
+  paddingBottom: 10,
+  backgroundColor: THEME.colors.surface,
+  gap: 8
+},
+
+todayToggle: {
+  paddingHorizontal: 16,
+  paddingVertical: 8,
+  borderRadius: 20,
+  backgroundColor: '#F5F5F5'
+},
+
+todayToggleActive: {
+  backgroundColor: THEME.colors.primary
+},
+
+todayToggleText: {
+  fontSize: 13,
+  fontWeight: '600',
+  color: THEME.colors.textSecondary
+},
+
+todayToggleTextActive: {
+  color: '#FFF'
 },
 });

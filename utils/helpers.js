@@ -1,95 +1,170 @@
-import * as Calendar from "expo-calendar";
-import { Alert, Platform } from "react-native";
-import { fetchBookingById } from "../services/api";
+import { Linking } from 'react-native';
+import { fetchUserDetails } from "../services/api";
 
-export const addBookingToCalendar = async ({ booking, address }) => {
-  try {
-    // STEP 1 — Check permission first
-    let permission = await Calendar.getCalendarPermissionsAsync();
+const CALENDAR_EMAIL = 'support@qwiky.in';
 
-    if (permission.status !== "granted") {
-      // STEP 2 — Ask permission
-      permission = await Calendar.requestCalendarPermissionsAsync();
+const formatDateForCalendar = (date: Date) =>
+  date.toISOString().replace(/-|:|\.\d+/g, '');
 
-      if (permission.status !== "granted") {
-        Alert.alert(
-          "Calendar Permission Required",
-          "Please allow calendar access to add bookings.",
-        );
-        return;
-      }
-    }
+const formatTime = (date: Date) =>
+  date.toLocaleTimeString('en-IN', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
 
-    // STEP 3 — Fetch calendars
-    const calendars = await Calendar.getCalendarsAsync(
-      Calendar.EntityTypes.EVENT,
-    );
+export const openCalendarEvent = async ({
+  booking,
+  user,
+  address,
+  phone,
+  recordService,
+  amount,
+  mapLink,
+}) => {
 
-    if (!calendars?.length) {
-      Alert.alert("No Calendar Found", "Please add a calendar account.");
-      return;
-    }
+  const slotStart = booking?.services?.[0]?.slotStart;
+  if (!slotStart) return;
 
-    const calendarId =
-      calendars.find((c) => c.allowsModifications)?.id || calendars[0].id;
+  const start = new Date(slotStart);
+  const end = new Date(start.getTime() + 75 * 60000);
 
-    const slotStart = booking?.services?.[0]?.slotStart;
+  const startStr = formatDateForCalendar(start);
+  const endStr = formatDateForCalendar(end);
 
-    if (!slotStart) {
-      Alert.alert("Slot Missing", "Booking slot not available.");
-      return;
-    }
+  const slotTime = formatTime(start);
 
-    const startDate = new Date(slotStart);
-    const endDate = new Date(startDate.getTime() + 75 * 60000);
+  const title = encodeURIComponent(
+    `Qwiky | ${slotTime} | ${booking.bookingCode}`
+  );
 
-    await Calendar.createEventAsync(calendarId, {
-      title: `Qwiky Booking - ${booking.bookingCode}`,
-      startDate,
-      endDate,
-      location: address || "",
-      notes: `Booking ID: ${booking.bookingId}`,
-      alarms: [{ relativeOffset: -30 }],
-      attendees: CALENDAR_ATTENDEES.map((email) => ({ email })),
-    });
+  const details = encodeURIComponent(
+`Customer: ${user || 'N/A'}
+Phone: ${phone || 'N/A'}
 
-    Alert.alert("Success", "Booking added to calendar");
-  } catch (error) {
-    console.error("Calendar Error:", error);
-    Alert.alert("Calendar Error", "Failed to create calendar event.");
-  }
+Amount: ₹${amount ?? '0'}
+
+Record Service: ${recordService ? 'Yes' : 'No'}
+
+Address:
+${address || 'N/A'}
+
+Google Maps:
+${mapLink || 'N/A'}
+
+Booking ID:
+${booking?.bookingId || 'N/A'}`
+  );
+
+  const location = encodeURIComponent(address || '');
+
+  const url =
+    `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+    `&text=${title}` +
+    `&dates=${startStr}/${endStr}` +
+    `&details=${details}` +
+    `&location=${location}` +
+    `&src=${CALENDAR_EMAIL}`;
+
+  await Linking.openURL(url);
 };
 
-export const resolveBookingAddress = async (booking) => {
-  debugger;
-  if (booking?.bookingAddress) {
-    const a = booking.bookingAddress;
+export const createCalendarEvent = async ({
+  booking,
+  getAddress,
+  getGoogleMapLink,
+  getAmount,
+  getServiceRecordConsent
+}) => {
 
-    return [
-      a.addressLine1,
-      a.addressLine2,
-      a.locality,
-      `${a.city}, ${a.state} ${a.pincode}`,
-    ]
-      .filter(Boolean)
-      .join(", ");
+  let customerName =
+    booking?.userName ||
+    booking?.customerName ||
+    null;
+
+  let phone =
+    booking?.phone ||
+    booking?.mobileNumber ||
+    null;
+
+  /**
+   * Fetch user details if missing
+   */
+  if ((!customerName || !phone) && booking?.userId) {
+    try {
+
+      const user = await fetchUserDetails(booking.userId);
+
+      customerName =
+        user?.name ||
+        user?.fullName ||
+        user?.userName ||
+        customerName;
+
+      phone =
+        user?.mobileNumber
+          ? `+${user?.countryCode || '91'} ${user.mobileNumber}`
+          : user?.phone ||
+            user?.phoneNumber ||
+            phone;
+
+    } catch (e) {
+      console.log("User fetch failed", e);
+    }
   }
 
-  // fallback fetch booking details
-  const fullBooking = await fetchBookingById(booking.bookingId);
+  const address = getAddress?.() || '';
 
-  const addr = fullBooking?.bookingAddress;
+  const mapLink = getGoogleMapLink?.() || '';
 
-  if (!addr) return "";
+  const amount = getAmount?.() ?? 0;
 
-  return [
-    addr.addressLine1,
-    addr.addressLine2,
-    addr.locality,
-    `${addr.city}, ${addr.state} ${addr.pincode}`,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  const recordService =
+    getServiceRecordConsent?.() === 'true';
+
+  await openCalendarEvent({
+    booking,
+    user: customerName,
+    phone,
+    address,
+    mapLink,
+    amount,
+    recordService
+  });
 };
 
-export const CALENDAR_ATTENDEES = ["ankit.saini@qwiky.in"];
+export const getBookingCalendarDetails = ({
+  booking,
+  user,
+  getAddress,
+  getUserPhone,
+  getGoogleMapLink,
+  getAmount,
+  getServiceRecordConsent
+}) => {
+
+  return {
+    userName:
+      user?.name ||
+      user?.fullName ||
+      booking?.userName ||
+      null,
+
+    phone:
+      getUserPhone?.() ||
+      booking?.phone ||
+      null,
+
+    address:
+      getAddress?.() || '',
+
+    mapLink:
+      getGoogleMapLink?.() || '',
+
+    amount:
+      getAmount?.() ?? 0,
+
+    recordService:
+      getServiceRecordConsent?.() === 'true'
+  };
+};

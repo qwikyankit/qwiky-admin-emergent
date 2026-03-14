@@ -18,6 +18,7 @@ import StatusBadge from '../../components/StatusBadge';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import Toast from '../../components/Toast';
 import { fetchUserDetails, cancelBooking, settleBooking, getErrorMessage } from '../../services/api';
+import { createCalendarEvent } from '../../utils/helpers';
 import THEME from '../../constants/theme';
 
 export default function BookingDetail() {
@@ -228,6 +229,48 @@ const getServiceRecordConsent = () => {
   return null;
 };
 
+
+const handleAddToCalendar = async () => {
+
+  if (!booking) return;
+
+  await createCalendarEvent({
+    booking,
+
+    getAddress: () => {
+      const addr = booking?.bookingAddress;
+      if (!addr) return '';
+
+      return [
+        addr.addressLine1,
+        addr.addressLine2,
+        addr.locality,
+        `${addr.city}, ${addr.state} ${addr.pincode}`
+      ]
+        .filter(Boolean)
+        .join(', ');
+    },
+
+    getGoogleMapLink: () => {
+      const addr = booking?.bookingAddress;
+
+      if (!addr?.latitude || !addr?.longitude) return '';
+
+      return `https://www.google.com/maps/search/?api=1&query=${addr.latitude},${addr.longitude}`;
+    },
+
+    getAmount: () =>
+      booking?.priceSummary?.grandTotal ||
+      booking?.amount ||
+      booking?.totalAmount ||
+      booking?.services?.[0]?.totalAmount ||
+      0,
+
+    getServiceRecordConsent: () =>
+      booking?.serviceRecordConsent?.agreed ? 'true' : 'false'
+  });
+};
+
   const isSettled = booking?.status?.toUpperCase() === 'SETTLED';
   const isCancelled = booking?.status?.toUpperCase() === 'CANCELLED';
   const isFailed = booking?.status?.toUpperCase() === 'FAILED';
@@ -291,7 +334,24 @@ const getServiceRecordConsent = () => {
           <Text style={styles.headerTitle}>Booking Details</Text>
           <Text style={styles.headerId}>{booking.bookingCode || `#${booking.bookingId?.substring(0, 8)}`}</Text>
         </View>
-        <StatusBadge status={booking.status} />
+       <View style={styles.headerActions}>
+
+  {booking?.status?.toUpperCase() === 'CONFIRMED' && (
+    <TouchableOpacity
+      onPress={handleAddToCalendar}
+      style={styles.calendarIcon}
+    >
+      <Ionicons
+        name="calendar-outline"
+        size={20}
+        color={THEME.colors.textMuted}
+      />
+    </TouchableOpacity>
+  )}
+
+  <StatusBadge status={booking.status} />
+
+</View>
       </View>
 
       <ScrollView
@@ -739,6 +799,16 @@ mapButtonText: {
 },
 shareButton: {
   backgroundColor: THEME.colors.textSecondary,
+},
+headerActions: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 10
+},
+
+calendarIcon: {
+  padding: 4,
+  opacity: 0.7
 },
 
 });
