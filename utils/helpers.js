@@ -13,6 +13,54 @@ const formatTime = (date: Date) =>
     hour12: true
   });
 
+const generateICS = ({
+  booking,
+  user,
+  address,
+  phone,
+  recordService,
+  amount,
+  mapLink,
+}) => {
+
+  const slotStart = booking?.services?.[0]?.slotStart;
+  if (!slotStart) return null;
+
+  const start = new Date(slotStart);
+  const end = new Date(start.getTime() + 75 * 60000);
+
+  const formatICSDate = (date) =>
+    date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+  const description =
+`Customer: ${user || "N/A"}
+Phone: ${phone || "N/A"}
+
+Amount: ₹${amount ?? "0"}
+
+Record Service: ${recordService ? "Yes" : "No"}
+
+Address:
+${address || "N/A"}
+
+Google Maps:
+${mapLink || "N/A"}
+
+Booking ID:
+${booking?.bookingId || "N/A"}`;
+
+  return `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+SUMMARY:Qwiky | ${booking.bookingCode}
+DESCRIPTION:${description.replace(/\n/g, "\\n")}
+LOCATION:${address || ""}
+DTSTART:${formatICSDate(start)}
+DTEND:${formatICSDate(end)}
+END:VEVENT
+END:VCALENDAR`;
+};
+
 export const openCalendarEvent = async ({
   booking,
   user,
@@ -66,7 +114,35 @@ ${booking?.bookingId || 'N/A'}`
     `&location=${location}` +
     `&src=${CALENDAR_EMAIL}`;
 
-  await Linking.openURL(url);
+  try {
+    const supported = await Linking.canOpenURL(url);
+
+    if (supported) {
+      await Linking.openURL(url);
+      return;
+    }
+
+  } catch (e) {
+    console.log("Calendar URL failed, fallback to ICS");
+  }
+
+  // Fallback for mobile PWA
+  const icsContent = generateICS({
+    booking,
+    user,
+    address,
+    phone,
+    recordService,
+    amount,
+    mapLink,
+  });
+
+  if (!icsContent) return;
+
+  const blob = new Blob([icsContent], { type: "text/calendar" });
+  const fileURL = URL.createObjectURL(blob);
+
+  await Linking.openURL(fileURL);
 };
 
 export const createCalendarEvent = async ({
