@@ -13,8 +13,10 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useDateRangePicker } from '../utils/useDateRangePicker';
 import BookingCard from '../components/BookingCard';
 import { BookingListSkeleton } from '../components/Loader';
 import EmptyState from '../components/EmptyState';
@@ -51,12 +53,35 @@ export default function Home() {
   // New booking notification
   const [newBookingsCount, setNewBookingsCount] = useState(0);
   const lastKnownCount = useRef(0);
-
   const [hoods, setHoods] = useState([]);
   const [selectedHoodId, setSelectedHoodId] = useState(null);
   const [selectedHoodName, setSelectedHoodName] = useState('');
-  const [showTodayOnly, setShowTodayOnly] = useState(true);
-  const DEFAULT_HOOD_ID = process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID;
+
+  const DATE_FILTERS = [
+  'ALL',
+  'TODAY',
+  'TOMORROW',
+  'DAY_AFTER',
+  'CUSTOM'
+];
+
+const [activeDateFilter, setActiveDateFilter] = useState('TODAY');
+// for custom range
+const DEFAULT_HOOD_ID = process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID;
+
+const {
+  customStartDate,
+  customEndDate,
+  setCustomStartDate,   // ✅ ADD
+  setCustomEndDate,     // ✅ ADD
+  showDatePicker,
+  pickerType,
+  webVisible,
+  setWebVisible,
+  openPicker,
+  onDateChange,
+  applyWebDates
+} = useDateRangePicker();
 
   // Handle Android back button
   useEffect(() => {
@@ -81,9 +106,9 @@ export default function Home() {
     }
   }, [selectedHoodId]);
 
- useEffect(() => {
+useEffect(() => {
   filterBookings(bookings, searchQuery, activeFilter);
-}, [bookings, searchQuery, activeFilter, showTodayOnly]);
+}, [bookings, searchQuery, activeFilter, activeDateFilter, customStartDate, customEndDate]);
 
 
   useEffect(() => {
@@ -177,33 +202,69 @@ export default function Home() {
     onRefresh();
   };
  
-  const filterBookings = (data, search, status) => {
+const normalizeDate = (date) => {
+  const d = new Date(date);
+
+  return new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate()
+  );
+};
+
+const filterBookings = (data, search, status) => {
   let filtered = [...data];
 
-  // STATUS FILTER
+  // ✅ STATUS FILTER
   if (status !== 'ALL') {
     filtered = filtered.filter(
       (b) => b.status?.toUpperCase() === status.toUpperCase()
     );
   }
 
-  // TODAY FILTER
-  if (showTodayOnly) {
-    const today = new Date();
-    today.setHours(0,0,0,0);
+  // ✅ DATE FILTER (BASED ON slotStart)
+  const today = normalizeDate(new Date());
 
-    filtered = filtered.filter((b) => {
-      const slotStart = b?.services?.[0]?.slotStart;
-      if (!slotStart) return false;
+  filtered = filtered.filter((b) => {
+    const slotStart = b?.services?.[0]?.slotStart;
+    if (!slotStart) return false;
 
-      const bookingDate = new Date(slotStart);
-      bookingDate.setHours(0,0,0,0);
+    const bookingDate = normalizeDate(slotStart);
 
-      return bookingDate.getTime() === today.getTime();
-    });
-  }
+    switch (activeDateFilter) {
+      case 'TODAY':
+        return bookingDate.getTime() === today.getTime();
 
-  // SEARCH FILTER
+      case 'TOMORROW': {
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+        return bookingDate.getTime() === tomorrow.getTime();
+      }
+
+      case 'DAY_AFTER': {
+        const dayAfter = new Date(today);
+        dayAfter.setDate(today.getDate() + 2);
+        return bookingDate.getTime() === dayAfter.getTime();
+      }
+
+      case 'CUSTOM': {
+        if (!customStartDate) return true;
+
+        const start = normalizeDate(customStartDate);
+        const end = normalizeDate(
+          customEndDate ? customEndDate : new Date()
+        );
+
+        return bookingDate >= start && bookingDate <= end;
+      }
+
+      case 'ALL':
+      default:
+        return true;
+    }
+  });
+
+  // ✅ SEARCH FILTER
   if (search.trim()) {
     const searchLower = search.toLowerCase().trim();
 
@@ -215,6 +276,33 @@ export default function Home() {
         b.userId?.toLowerCase().includes(searchLower)
     );
   }
+
+  // ✅ SMART SORTING (DATE + TIME AWARE)
+  filtered.sort((a, b) => {
+    const aDateTime = new Date(a?.services?.[0]?.slotStart || 0);
+    const bDateTime = new Date(b?.services?.[0]?.slotStart || 0);
+
+    const aDate = normalizeDate(aDateTime);
+    const bDate = normalizeDate(bDateTime);
+
+    // 👉 SAME DAY → sort by TIME ascending (9AM → 10AM)
+    if (aDate.getTime() === bDate.getTime()) {
+      return aDateTime - bDateTime;
+    }
+
+    // 👉 CUSTOM RANGE (PAST) → ascending (oldest first)
+    if (activeDateFilter === 'CUSTOM' && customStartDate) {
+      const end = normalizeDate(customEndDate || new Date());
+      const todayDate = normalizeDate(new Date());
+
+      if (end < todayDate) {
+        return aDateTime - bDateTime;
+      }
+    }
+
+    // 👉 DEFAULT → latest date first
+    return bDateTime - aDateTime;
+  });
 
   setFilteredBookings(filtered);
 };
@@ -243,6 +331,11 @@ export default function Home() {
     return layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
   };
 
+const handleCustomDatePress = () => {
+  openPicker('start');
+};
+
+
   if (loading && bookings.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -269,7 +362,7 @@ export default function Home() {
           </View>
         </View>
         <BookingListSkeleton />
-      </SafeAreaView>
+  </SafeAreaView>
     );
   }
 
@@ -317,9 +410,9 @@ export default function Home() {
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.headerTitle}>Qwiky Admin</Text>
-            <Text style={styles.headerSubtitle}>
-              {totalElements} Booking{totalElements !== 1 ? 's' : ''}
-            </Text>
+           <Text style={styles.headerSubtitle}>
+Showing {filteredBookings.length} of {totalElements} bookings
+          </Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
@@ -422,42 +515,43 @@ export default function Home() {
 
       {/* Status Filter Chips */}
       {/* Today Toggle */}
-<View style={styles.todayToggleContainer}>
+ <View style={styles.dateFilterContainer}>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
 
-  <TouchableOpacity
-    style={[
-      styles.todayToggle,
-      showTodayOnly && styles.todayToggleActive
-    ]}
-    onPress={() => setShowTodayOnly(true)}
-  >
-    <Text
-      style={[
-        styles.todayToggleText,
-        showTodayOnly && styles.todayToggleTextActive
-      ]}
-    >
-      Today
-    </Text>
-  </TouchableOpacity>
+    {DATE_FILTERS.map((filter) => (
+      <TouchableOpacity
+        key={filter}
+        style={[
+          styles.dateChip,
+          activeDateFilter === filter && styles.dateChipActive
+        ]}
+       onPress={() => {
+  if (filter === 'CUSTOM') {
+  setActiveDateFilter('CUSTOM');
+  handleCustomDatePress();
+} else {
+    setActiveDateFilter(filter);
+  }
+}}
+      >
+        <Text
+          style={[
+            styles.dateChipText,
+            activeDateFilter === filter && styles.dateChipTextActive
+          ]}
+        >
+         {filter === 'CUSTOM' && customStartDate
+  ? `${customStartDate.toLocaleDateString()} - ${
+      (customEndDate || new Date()).toLocaleDateString()
+    }`
+  : filter === 'DAY_AFTER'
+  ? 'DAY AFTER TOMORROW'
+  : filter.replace('_', ' ')}
+        </Text>
+      </TouchableOpacity>
+    ))}
 
-  <TouchableOpacity
-    style={[
-      styles.todayToggle,
-      !showTodayOnly && styles.todayToggleActive
-    ]}
-    onPress={() => setShowTodayOnly(false)}
-  >
-    <Text
-      style={[
-        styles.todayToggleText,
-        !showTodayOnly && styles.todayToggleTextActive
-      ]}
-    >
-      All
-    </Text>
-  </TouchableOpacity>
-
+  </ScrollView>
 </View>
       <View style={styles.filterContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -509,7 +603,7 @@ export default function Home() {
         }}
         scrollEventThrottle={400}
       >
-        {filteredBookings.length === 0 ? (
+       {!loading && filteredBookings.length === 0 ? (
           <EmptyState
             title={searchQuery || activeFilter !== 'ALL' ? 'No Matches Found' : 'No Bookings'}
             message={
@@ -548,6 +642,102 @@ export default function Home() {
         )}
         <View style={styles.listFooter} />
       </ScrollView>
+    
+    {/* MOBILE DATE PICKER */}
+{showDatePicker && Platform.OS !== 'web' && (
+  <DateTimePicker
+    value={
+      pickerType === 'start'
+        ? customStartDate || new Date()
+        : customEndDate || new Date()
+    }
+    mode="date"
+    display={Platform.OS === 'ios' ? 'inline' : 'default'}
+    onChange={(event, selectedDate) => {
+  if (!selectedDate) {
+    setShowDatePicker(false);
+    return;
+  }
+
+  if (pickerType === 'start') {
+    onDateChange(event, selectedDate);
+
+    // 👉 open END picker automatically
+    setTimeout(() => {
+      openPicker('end');
+    }, 200);
+
+  } else {
+    onDateChange(event, selectedDate);
+
+    // 👉 apply filter after end selected
+    setActiveDateFilter('CUSTOM');
+  }
+}}
+  />
+)}
+
+{Platform.OS === 'web' && webVisible && (
+  <View style={styles.webPickerOverlay}>
+    <View style={styles.webPickerBox}>
+
+      <Text style={styles.webPickerTitle}>
+        Select Date Range
+      </Text>
+
+      <Text>Start Date</Text>
+      <input
+        type="date"
+        value={customStartDate ? customStartDate.toISOString().split('T')[0] : ''}
+        onChange={(e) => setCustomStartDate(new Date(e.target.value))}
+        style={styles.webInput}
+      />
+
+      <Text style={{ marginTop: 12 }}>End Date</Text>
+      <input
+        type="date"
+        value={customEndDate ? customEndDate.toISOString().split('T')[0] : ''}
+        onChange={(e) => setCustomEndDate(new Date(e.target.value))}
+        style={styles.webInput}
+      />
+
+      <View style={{ flexDirection: 'row', marginTop: 16, gap: 10 }}>
+
+        <TouchableOpacity
+          onPress={() => setWebVisible(false)}
+          style={[styles.webPickerClose, { backgroundColor: '#999' }]}
+        >
+          <Text style={{ color: '#FFF' }}>Cancel</Text>
+        </TouchableOpacity>
+
+     <TouchableOpacity
+  disabled={!customStartDate}
+  onPress={() => {
+    const success = applyWebDates(
+      customStartDate,
+      customEndDate,
+      showToast
+    );
+
+    if (success) {
+      setActiveDateFilter('CUSTOM');
+    }
+  }}
+  style={[
+    styles.webPickerClose,
+    {
+      backgroundColor: customStartDate
+        ? THEME.colors.primary
+        : '#CCC'
+    }
+  ]}
+><Text style={{ color: '#FFF' }}>Apply</Text></TouchableOpacity>
+
+      </View>
+
+    </View>
+  </View>
+)}
     </SafeAreaView>
   );
 }
@@ -766,5 +956,71 @@ todayToggleText: {
 
 todayToggleTextActive: {
   color: '#FFF'
+},
+dateFilterContainer: {
+  paddingHorizontal: 16,
+  paddingVertical: 10,
+  backgroundColor: THEME.colors.surface,
+},
+
+dateChip: {
+  paddingHorizontal: 14,
+  paddingVertical: 8,
+  borderRadius: 20,
+  backgroundColor: '#F5F5F5',
+  marginRight: 8,
+},
+
+dateChipActive: {
+  backgroundColor: THEME.colors.primary,
+},
+
+dateChipText: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: THEME.colors.textSecondary,
+},
+
+dateChipTextActive: {
+  color: '#FFF',
+},
+webPickerOverlay: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.4)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 999
+},
+
+webPickerBox: {
+  width: 300,
+  backgroundColor: '#FFF',
+  borderRadius: 12,
+  padding: 16
+},
+
+webPickerTitle: {
+  fontSize: 16,
+  fontWeight: '600'
+},
+
+webPickerClose: {
+  marginTop: 16,
+  backgroundColor: '#333',
+  padding: 10,
+  borderRadius: 8,
+  alignItems: 'center'
+},
+webInput: {
+  padding: 10,
+  fontSize: 16,
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#ccc',
+  marginTop: 6
 },
 });
