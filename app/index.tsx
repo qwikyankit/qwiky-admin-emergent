@@ -277,18 +277,10 @@ const filterBookings = (data, search, status) => {
     );
   }
 
-  // ✅ SMART SORTING (DATE + TIME AWARE)
+  // ✅ DATE-ONLY SORTING (NO TIME PRIORITY)
   filtered.sort((a, b) => {
-    const aDateTime = new Date(a?.services?.[0]?.slotStart || 0);
-    const bDateTime = new Date(b?.services?.[0]?.slotStart || 0);
-
-    const aDate = normalizeDate(aDateTime);
-    const bDate = normalizeDate(bDateTime);
-
-    // 👉 SAME DAY → sort by TIME ascending (9AM → 10AM)
-    if (aDate.getTime() === bDate.getTime()) {
-      return aDateTime - bDateTime;
-    }
+    const aDate = normalizeDate(a?.services?.[0]?.slotStart || 0);
+    const bDate = normalizeDate(b?.services?.[0]?.slotStart || 0);
 
     // 👉 CUSTOM RANGE (PAST) → ascending (oldest first)
     if (activeDateFilter === 'CUSTOM' && customStartDate) {
@@ -296,12 +288,12 @@ const filterBookings = (data, search, status) => {
       const todayDate = normalizeDate(new Date());
 
       if (end < todayDate) {
-        return aDateTime - bDateTime;
+        return aDate - bDate;
       }
     }
 
     // 👉 DEFAULT → latest date first
-    return bDateTime - aDateTime;
+    return bDate - aDate;
   });
 
   setFilteredBookings(filtered);
