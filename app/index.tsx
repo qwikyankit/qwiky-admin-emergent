@@ -30,7 +30,7 @@ import {
 } from '../services/api';import THEME from '../constants/theme';
 
 const STATUS_FILTERS = ['ALL', 'CONFIRMED', 'SETTLED', 'CANCELLED', 'FAILED', 'PAYMENT_PENDING'];
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 
 export default function Home() {
   const router = useRouter();

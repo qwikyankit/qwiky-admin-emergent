@@ -133,7 +133,7 @@ export const fetchHoods = async () => {
 export const fetchBookings = async (
   hoodId: string = HOOD_ID,
   page: number = 0,
-  size: number = 20
+  size: number = 50
 ): Promise<PaginatedResponse> => {
   const response = await apiClient.get(
     `/admin/booking/hood/${hoodId}`,
