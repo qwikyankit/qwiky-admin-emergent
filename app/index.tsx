@@ -277,23 +277,12 @@ const filterBookings = (data, search, status) => {
     );
   }
 
-  // ✅ DATE-ONLY SORTING (NO TIME PRIORITY)
+  // ✅ SORT BY CREATED DATE (LATEST FIRST)
   filtered.sort((a, b) => {
-    const aDate = normalizeDate(a?.services?.[0]?.slotStart || 0);
-    const bDate = normalizeDate(b?.services?.[0]?.slotStart || 0);
+    const aCreated = new Date(a?.createdAt || 0);
+    const bCreated = new Date(b?.createdAt || 0);
 
-    // 👉 CUSTOM RANGE (PAST) → ascending (oldest first)
-    if (activeDateFilter === 'CUSTOM' && customStartDate) {
-      const end = normalizeDate(customEndDate || new Date());
-      const todayDate = normalizeDate(new Date());
-
-      if (end < todayDate) {
-        return aDate - bDate;
-      }
-    }
-
-    // 👉 DEFAULT → latest date first
-    return bDate - aDate;
+    return bCreated - aCreated; // newest first
   });
 
   setFilteredBookings(filtered);
