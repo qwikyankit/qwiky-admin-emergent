@@ -17,7 +17,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import StatusBadge from '../../components/StatusBadge';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import Toast from '../../components/Toast';
-import { fetchUserDetails, cancelBooking, settleBooking, getErrorMessage } from '../../services/api';
+import { fetchUserDetails, cancelBooking, settleBooking, getErrorMessage, fetchHoodExperts, assignExpert } from '../../services/api';
 import { createCalendarEvent } from '../../utils/helpers';
 import THEME from '../../constants/theme';
 
@@ -34,6 +34,11 @@ export default function BookingDetail() {
     type: 'settle' | 'cancel' | null;
   }>({ visible: false, type: null });
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as const });
+  const [experts, setExperts] = useState([]);
+const [selectedExpert, setSelectedExpert] = useState(null);
+const [loadingExperts, setLoadingExperts] = useState(false);
+const [assigning, setAssigning] = useState(false);
+const [showReassign, setShowReassign] = useState(false);
 
   // Handle Android back button
   useEffect(() => {
@@ -62,6 +67,19 @@ export default function BookingDetail() {
     }
   }, [bookingParam]);
 
+
+useEffect(() => {
+  if (booking?.hoodId) {
+    loadExperts(booking.hoodId);
+  }
+   if (booking?.assignedExpert) {
+    setSelectedExpert({
+      id: booking.assignedExpert.expertId,
+      name: booking.assignedExpert.expertName
+    });
+  }
+}, [booking]);
+
   const loadUserDetails = async (userId: string) => {
     try {
       setLoadingUser(true);
@@ -74,6 +92,64 @@ export default function BookingDetail() {
       setLoadingUser(false);
     }
   };
+
+
+const loadExperts = async (hoodId) => {
+  try {
+    setLoadingExperts(true);
+
+    const data = await fetchHoodExperts(hoodId);
+
+    const normalized = (data || []).map((item, index) => ({
+      id: item.id || item.userId || item.expertUserId,
+      name:
+        item.name ||
+        item.fullName ||
+        item.userName ||
+        `Expert ${index + 1}`,
+    }));
+
+    // ✅ REMOVE DUPLICATE of assigned expert
+    const unique = normalized.filter(
+      (e) => e.id !== booking?.assignedExpert?.expertId
+    );
+
+    setExperts(unique);
+
+  } catch (err) {
+    console.error('Failed to fetch experts', err);
+    showToast('Failed to load experts', 'error');
+  } finally {
+    setLoadingExperts(false);
+  }
+};
+  
+  const handleAssignExpert = async (expert) => {
+  if (!booking?.bookingId || !expert?.id) return;
+
+  // 🔥 Already assigned → reassign flow
+  if (selectedExpert?.id === expert.id) return; // already selected
+
+if (selectedExpert && selectedExpert.id !== expert.id) {
+  setShowReassign(true);
+  return;
+}
+
+  try {
+    setAssigning(true);
+
+    await assignExpert(booking.bookingId, expert.id);
+
+    setSelectedExpert(expert);
+
+    showToast(`${expert.name} assigned`, 'success');
+
+  } catch (err) {
+    showToast(getErrorMessage(err), 'error');
+  } finally {
+    setAssigning(false);
+  }
+};
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -320,7 +396,19 @@ const handleAddToCalendar = async () => {
         onCancel={() => setConfirmModal({ visible: false, type: null })}
         loading={actionLoading}
       />
-
+<ConfirmationModal
+  visible={showReassign}
+  title="Reassign Expert?"
+  message="This booking already has an assigned expert. Do you want to reassign?"
+  confirmText="Reassign"
+  confirmColor={THEME.colors.primary}
+  icon="swap-horizontal"
+  onConfirm={() => {
+    setShowReassign(false);
+    showToast('Reassign flow will be enabled soon', 'info');
+  }}
+  onCancel={() => setShowReassign(false)}
+/>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -354,6 +442,8 @@ const handleAddToCalendar = async () => {
 </View>
       </View>
 
+
+
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
@@ -386,7 +476,78 @@ const handleAddToCalendar = async () => {
             )}
           </View>
         </View>
+{/* ✅ Assign Expert Section */}
+{booking?.status?.toUpperCase() === 'CONFIRMED' && (
+<View style={styles.section}>
+  <View style={styles.sectionHeader}>
+    <Ionicons
+      name="people-outline"
+      size={22}
+      color={THEME.colors.primary}
+    />
+    <Text style={styles.sectionTitle}>
+      Assign Expert {experts.length ? `(${experts.length})` : ''}
+    </Text>
+  </View>
+<View style={styles.infoCard}>
 
+  {loadingExperts ? (
+    <ActivityIndicator size="small" color={THEME.colors.primary} />
+  ) : experts.length === 0 ? (
+    <Text style={{ color: THEME.colors.textMuted }}>
+      No experts available
+    </Text>
+  ) : (
+    <>
+      {/* ✅ Assigned Expert FIRST */}
+      {selectedExpert && (
+        <View style={styles.assignedWrapper}>
+          <Text style={styles.assignedLabel}>Assigned Expert</Text>
+
+          <View style={styles.assignedExpertCard}>
+  <Text style={styles.assignedExpertName}>
+    {selectedExpert.name}
+  </Text>
+</View>
+        </View>
+      )}
+
+      {/* ✅ Remaining Experts */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.expertList}
+      >
+        {experts
+          .filter(e => e.id !== selectedExpert?.id)
+          .map((expert, index) => {
+
+            const displayName =
+              expert.name || `Expert ${index + 1}`;
+
+            return (
+              <TouchableOpacity
+                key={expert.id || index}
+                onPress={() => handleAssignExpert(expert)}
+                style={[
+                  styles.expertChip,
+                  assigning && { opacity: 0.6 }
+                ]}
+                disabled={assigning}
+              >
+                <Text style={styles.expertText}>
+                  {displayName}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+      </ScrollView>
+    </>
+  )}
+
+</View>
+</View>
+  )}
        {/* Address Section */}
 {booking.bookingAddress && (
   <View style={styles.section}>
@@ -439,6 +600,8 @@ const handleAddToCalendar = async () => {
     </View>
   </View>
 )}
+
+
 
         {/* Guest Info Section */}
         <View style={styles.section}>
@@ -811,4 +974,57 @@ calendarIcon: {
   opacity: 0.7
 },
 
+expertChipActive: {
+  backgroundColor: THEME.colors.primary,
+},
+
+expertText: {
+  fontSize: 13,
+  color: THEME.colors.text,
+  fontWeight: '600',
+},
+
+expertTextActive: {
+  color: '#FFF',
+},
+assignedWrapper: {
+  marginBottom: 16,
+  paddingBottom: 14,
+  borderBottomWidth: 1,
+  borderBottomColor: '#F1F1F1',
+},
+
+
+assignedLabel: {
+  fontSize: 12,
+  color: THEME.colors.textMuted,
+  marginBottom: 6,
+},
+
+expertList: {
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+expertChip: {
+  paddingVertical: 10,
+  paddingHorizontal: 16,
+  borderRadius: 24,
+  backgroundColor: '#F1F5F9',
+  marginRight: 12,
+  minHeight: 40,
+  justifyContent: 'center',
+},
+assignedExpertCard: {
+  backgroundColor: THEME.colors.primary,
+  paddingVertical: 14,
+  paddingHorizontal: 16,
+  borderRadius: 16,
+},
+
+assignedExpertName: {
+  color: '#FFF',
+  fontSize: 15,
+  fontWeight: '700',
+},
 });

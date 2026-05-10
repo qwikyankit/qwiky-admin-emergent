@@ -239,4 +239,19 @@ export const getErrorMessage = (error: any): string => {
   );
 };
 
+// ✅ Fetch Experts (Hood Experts)
+export const fetchHoodExperts = async (hoodId) => {
+  const res = await apiClient.get(`/hood-users/hood/${hoodId}`);
+  return res.data;
+};
+
+// ✅ Assign Expert
+export const assignExpert = async (bookingId, expertUserId) => {
+  const res = await apiClient.post(
+    `/admin/bookings/${bookingId}/assign/${expertUserId}`,
+    {}
+  );
+  return res.data;
+};
+
 export default apiClient;
