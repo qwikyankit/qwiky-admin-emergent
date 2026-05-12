@@ -100,16 +100,19 @@ const loadExperts = async (hoodId) => {
 
     const data = await fetchHoodExperts(hoodId);
 
-    const normalized = (data || []).map((item, index) => ({
-      id: item.id || item.userId || item.expertUserId,
-      name:
-        item.name ||
-        item.fullName ||
-        item.userName ||
-        `Expert ${index + 1}`,
-    }));
+    const normalized = (data || [])
+      // ✅ Only ACTIVE experts
+      .filter((item) => item.status === 'ACTIVE')
+      .map((item, index) => ({
+        id: item.id || item.userId || item.expertUserId,
+        name:
+          item.name ||
+          item.fullName ||
+          item.userName ||
+          `Expert ${index + 1}`,
+      }));
 
-    // ✅ REMOVE DUPLICATE of assigned expert
+    // ✅ Remove already assigned expert
     const unique = normalized.filter(
       (e) => e.id !== booking?.assignedExpert?.expertId
     );
