@@ -408,6 +408,16 @@ Showing {filteredBookings.length} of {totalElements} bookings
               )}
             </TouchableOpacity>
             <TouchableOpacity
+  style={styles.notificationButton}
+  onPress={() => router.push('/notification')}
+>
+  <Ionicons
+    name="notifications-outline"
+    size={22}
+    color={THEME.colors.primary}
+  />
+</TouchableOpacity>
+            <TouchableOpacity
               style={styles.assistedButton}
               disabled={!selectedHoodId}
               onPress={() =>
@@ -1003,5 +1013,10 @@ webInput: {
   borderWidth: 1,
   borderColor: '#ccc',
   marginTop: 6
+},
+notificationButton: {
+  padding: 8,
+  borderRadius: 12,
+  backgroundColor: '#EEF2FF',
 },
 });

@@ -3,13 +3,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TOKEN_STORAGE_KEY = 'qwiky_admin_token';
 
+const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+
+const ONESIGNAL_API_KEY = process.env.EXPO_PUBLIC_ONESIGNAL_API_KEY;
+
 // Default token from environment
-const DEFAULT_TOKEN = process.env.EXPO_PUBLIC_QWIKY_TOKEN || '';
+const DEFAULT_TOKEN = process.env.EXPO_PUBLIC_QWIKY_TOKEN;
+// const DEFAULT_TOKEN =  'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlcyI6WyJTVVBFUl9BRE1JTiIsIkNVU1RPTUVSIl0sIm1vYmlsZSI6Ijk2NjA3NjYyMjciLCJ0b2tlbl90eXBlIjoiYWNjZXNzIiwidXNlcklkIjoiM2Y3N2JmMmYtNWYxYi00N2Y2LWFjYzgtNGJjNjIwMDhjYjc1Iiwic3ViIjoiM2Y3N2JmMmYtNWYxYi00N2Y2LWFjYzgtNGJjNjIwMDhjYjc1IiwiaWF0IjoxNzc4ODQxMjM4LCJleHAiOjE3NzkwMjEyMzh9.22blACPXQ7-MDDqfTC1XbXLCqjnDpAGCL-tw6JrfBIk';
+
 
 // IMPORTANT: Must stay '/api' for Vercel rewrite to work
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   'https://api.qwiky.in/qwiky-service/api/v1';
+
+
 
 // Hardcoded Hood ID (as requested)
 const HOOD_ID =
@@ -252,6 +260,40 @@ export const assignExpert = async (bookingId, expertUserId) => {
     {}
   );
   return res.data;
+};
+
+// ✅ Send Push Notification
+export const sendPushNotification = async ({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) => {
+  
+  const response = await axios.post(
+    'https://api.onesignal.com/notifications?c=push',
+    {
+      app_id: ONESIGNAL_APP_ID,
+      headings: {
+        en: title,
+      },
+
+      contents: {
+        en: message,
+      },
+
+      included_segments: ['All'],
+      target_channel: 'push',
+    },
+    {
+      headers: {
+        Authorization: `Key ${ONESIGNAL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  return response.data;
 };
 
 export default apiClient;
