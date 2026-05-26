@@ -294,19 +294,6 @@ const handleShareLocation = async () => {
   }
 };
 
-const getServiceRecordConsent = () => {
-  const consent = booking?.serviceRecordConsent;
-  if (!consent || consent?.type !== 'SERVICE_RECORDING') {
-    return null;
-  }
-  if (consent?.agreed === true) {
-    return 'true';
-  }
-  if (consent?.agreed === false) {
-    return 'false';
-  }
-  return null;
-};
 
 
 const handleAddToCalendar = async () => {
@@ -354,7 +341,6 @@ const handleAddToCalendar = async () => {
   const isCancelled = booking?.status?.toUpperCase() === 'CANCELLED';
   const isFailed = booking?.status?.toUpperCase() === 'FAILED';
   const canTakeAction = !isSettled && !isCancelled && !isFailed;
-  const recordServiceConsent = getServiceRecordConsent();
  
 
   if (!booking) {
@@ -471,12 +457,7 @@ const handleAddToCalendar = async () => {
             {booking.services?.[0]?.slotStart && (
               <InfoRow label="Slot Time" value={formatDate(booking.services[0].slotStart)} />
             )}
-            {recordServiceConsent !== null && (
-              <InfoRow
-                label="Record Service"
-                value={recordServiceConsent === 'true' ? 'Yes' : 'No'}
-              />
-            )}
+           
           </View>
         </View>
 {/* ✅ Assign Expert Section */}

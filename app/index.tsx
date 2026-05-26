@@ -29,7 +29,7 @@ import {
   getErrorMessage 
 } from '../services/api';import THEME from '../constants/theme';
 
-const STATUS_FILTERS = ['ALL', 'CONFIRMED', 'SETTLED', 'CANCELLED', 'FAILED', 'PAYMENT_PENDING'];
+const STATUS_FILTERS = ['ALL', 'CONFIRMED', 'IN_PROGRESS', 'SETTLED', 'CANCELLED', 'FAILED', 'PAYMENT_PENDING'];
 const PAGE_SIZE = 100;
 
 export default function Home() {
@@ -849,7 +849,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: THEME.colors.textMuted,
   },
-    hoodSelectorContainer: {
+  hoodSelectorContainer: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     backgroundColor: THEME.colors.surface,
@@ -861,17 +861,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     marginRight: 8,
   },
-
   hoodChipActive: {
     backgroundColor: THEME.colors.primary,
   },
-
   hoodChipText: {
     fontSize: 13,
     fontWeight: '600',
     color: THEME.colors.textSecondary,
   },
-
   hoodChipTextActive: {
     color: '#FFF',
   },
