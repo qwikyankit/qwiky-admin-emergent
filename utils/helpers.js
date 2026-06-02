@@ -217,3 +217,41 @@ export const getBookingCalendarDetails = ({
       getServiceRecordConsent?.() === 'true'
   };
 };
+
+export const getRemainingTime = (booking) => {
+  const expectedEnd =
+    booking?.bookingSessionResponse?.expectedBookingEndTime;
+
+  if (!expectedEnd) {
+    return 'N/A';
+  }
+
+  const diffMs =
+    new Date(expectedEnd).getTime() -
+    Date.now();
+
+  if (diffMs <= 0) {
+    return 'Completed';
+  }
+
+  const totalSeconds = Math.floor(
+    diffMs / 1000,
+  );
+
+  const minutes = Math.floor(
+    totalSeconds / 60,
+  );
+
+  const seconds =
+    totalSeconds % 60;
+
+  return `${minutes} min ${seconds} sec`;
+};
+
+export const getServiceEndTime = (booking) => {
+  return (
+    booking?.bookingSessionResponse?.endTime ||
+    booking?.bookingSessionResponse
+      ?.expectedBookingEndTime
+  );
+};

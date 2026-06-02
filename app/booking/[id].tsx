@@ -18,7 +18,7 @@ import StatusBadge from '../../components/StatusBadge';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import Toast from '../../components/Toast';
 import { fetchUserDetails, cancelBooking, settleBooking, getErrorMessage, fetchHoodExperts, assignExpert } from '../../services/api';
-import { createCalendarEvent } from '../../utils/helpers';
+import { createCalendarEvent, getRemainingTime, getServiceEndTime } from '../../utils/helpers';
 import THEME from '../../constants/theme';
 
 export default function BookingDetail() {
@@ -39,6 +39,7 @@ const [selectedExpert, setSelectedExpert] = useState(null);
 const [loadingExperts, setLoadingExperts] = useState(false);
 const [assigning, setAssigning] = useState(false);
 const [showReassign, setShowReassign] = useState(false);
+const [remainingTime, setRemainingTime] = useState('');
 
   // Handle Android back button
   useEffect(() => {
@@ -79,6 +80,64 @@ useEffect(() => {
     });
   }
 }, [booking]);
+
+useEffect(() => {
+  if (
+    booking?.status?.toUpperCase() !== 'IN_PROGRESS' ||
+    !booking?.bookingSessionResponse?.expectedBookingEndTime
+  ) {
+    return;
+  }
+
+  const updateTimer = () => {
+    const endTime = new Date(
+      booking.bookingSessionResponse.expectedBookingEndTime,
+    ).getTime();
+
+    const diff = endTime - Date.now();
+
+    if (diff <= 0) {
+      setRemainingTime('00:00:00');
+      return;
+    }
+
+    const totalSeconds = Math.floor(
+      diff / 1000,
+    );
+
+    const hours = Math.floor(
+      totalSeconds / 3600,
+    );
+
+    const minutes = Math.floor(
+      (totalSeconds % 3600) / 60,
+    );
+
+    const seconds =
+      totalSeconds % 60;
+
+    setRemainingTime(
+      `${String(hours).padStart(2, '0')}:${String(
+        minutes,
+      ).padStart(2, '0')}:${String(
+        seconds,
+      ).padStart(2, '0')}`,
+    );
+  };
+
+  updateTimer();
+
+  const interval = setInterval(
+    updateTimer,
+    1000,
+  );
+
+  return () => clearInterval(interval);
+
+}, [
+  booking?.status,
+  booking?.bookingSessionResponse?.expectedBookingEndTime,
+]);
 
   const loadUserDetails = async (userId: string) => {
     try {
@@ -426,7 +485,29 @@ const handleAddToCalendar = async () => {
     </TouchableOpacity>
   )}
 
+<View style={styles.statusContainer}>
+
+  {booking?.status?.toUpperCase() ===
+    'IN_PROGRESS' &&
+    remainingTime && (
+      <View style={styles.timerBadge}>
+        <Ionicons
+          name="time-outline"
+          size={12}
+          color="#FFF"
+        />
+
+        <Text style={styles.timerBadgeText}>
+          {remainingTime}
+        </Text>
+      </View>
+  )}
+
+ <View style={styles.statusBadgeWrapper}>
   <StatusBadge status={booking.status} />
+</View>
+
+</View>
 
 </View>
       </View>
@@ -446,9 +527,6 @@ const handleAddToCalendar = async () => {
           </View>
 
           <View style={styles.infoCard}>
-            <InfoRow label="Booking Code" value={booking.bookingCode || 'N/A'} />
-            <InfoRow label="Booking ID" value={booking.bookingId || 'N/A'} copyable />
-            <InfoRow label="Status" value={booking.status || 'N/A'} />
             <InfoRow label="Created" value={formatDate(booking.createdAt)} />
             <InfoRow label="Total Amount" value={formatAmount(getAmount())} highlight />
             {getServiceName() && (
@@ -460,6 +538,94 @@ const handleAddToCalendar = async () => {
            
           </View>
         </View>
+
+      {['CONFIRMED', 'IN_PROGRESS', 'SETTLED'].includes(
+  booking?.status?.toUpperCase(),
+) && (
+  <View style={styles.section}>
+    <View style={styles.sectionHeader}>
+      <Ionicons
+        name="time-outline"
+        size={22}
+        color={THEME.colors.primary}
+      />
+      <Text style={styles.sectionTitle}>
+        Service Tracking
+      </Text>
+    </View>
+
+   <View
+  style={[
+    styles.infoCard,
+    styles.serviceTrackingCard,
+  ]}
+>
+
+      {/* Start Time */}
+      <InfoRow
+        label="Service Start Time"
+        value={formatDate(
+          booking?.bookingSessionResponse
+            ?.startTime,
+        )}
+      />
+
+      {/* End Time */}
+      <InfoRow
+        label={
+          booking?.status?.toUpperCase() ===
+          'SETTLED'
+            ? 'Service End Time'
+            : 'Expected End Time'
+        }
+        value={formatDate(
+          getServiceEndTime(booking),
+        )}
+      />
+    
+     {/* OTPs only for active bookings */}
+{booking?.status?.toUpperCase() !== 'SETTLED' &&
+ booking?.bookingOtpResponse && (
+  <>
+    {booking.bookingOtpResponse.type === 'END' ? (
+      <>
+        <InfoRow
+          label="Start OTP"
+          value="Verified ✓"
+        />
+
+        <InfoRow
+          label="End OTP"
+          value={
+            booking.bookingOtpResponse.otp ||
+            'N/A'
+          }
+          highlight
+        />
+      </>
+    ) : (
+      <>
+        <InfoRow
+          label="Start OTP"
+          value={
+            booking.bookingOtpResponse.otp ||
+            'N/A'
+          }
+          highlight
+        />
+
+        <InfoRow
+          label="End OTP"
+          value="Pending"
+        />
+      </>
+    )}
+  </>
+)}
+    </View>
+  </View>
+)}
+        
 {/* ✅ Assign Expert Section */}
 {booking?.status?.toUpperCase() === 'CONFIRMED' && (
 <View style={styles.section}>
@@ -1010,5 +1176,51 @@ assignedExpertName: {
   color: '#FFF',
   fontSize: 15,
   fontWeight: '700',
+},
+serviceTrackingCard: {
+  backgroundColor: '#ffffff',
+  borderWidth: 1,
+  borderColor: '#ffffff',
+  borderRadius: 16,
+  padding: 16,
+},
+
+otpValue: {
+  fontSize: 15,
+  fontWeight: '700',
+  color: THEME.colors.primary,
+},
+
+remainingValue: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: '#F97316',
+},
+statusContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+timerBadge: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: 22,
+  paddingHorizontal: 12,
+  backgroundColor: '#F97316',
+  borderRadius: 16,
+  marginRight: 4,
+},
+
+timerBadgeText: {
+  color: '#FFF',
+  fontSize: 12,
+  fontWeight: '700',
+  marginLeft: 4,
+},
+statusBadgeWrapper: {
+  height: 32,
+  justifyContent: 'center',
 },
 });
