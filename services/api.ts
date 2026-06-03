@@ -9,8 +9,6 @@ const ONESIGNAL_API_KEY = process.env.EXPO_PUBLIC_ONESIGNAL_API_KEY;
 
 // Default token from environment
 const DEFAULT_TOKEN = process.env.EXPO_PUBLIC_QWIKY_TOKEN;
-// const DEFAULT_TOKEN =  'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlcyI6WyJTVVBFUl9BRE1JTiIsIkNVU1RPTUVSIl0sIm1vYmlsZSI6Ijk2NjA3NjYyMjciLCJ0b2tlbl90eXBlIjoiYWNjZXNzIiwidXNlcklkIjoiM2Y3N2JmMmYtNWYxYi00N2Y2LWFjYzgtNGJjNjIwMDhjYjc1Iiwic3ViIjoiM2Y3N2JmMmYtNWYxYi00N2Y2LWFjYzgtNGJjNjIwMDhjYjc1IiwiaWF0IjoxNzc4ODQxMjM4LCJleHAiOjE3NzkwMjEyMzh9.22blACPXQ7-MDDqfTC1XbXLCqjnDpAGCL-tw6JrfBIk';
-
 
 // IMPORTANT: Must stay '/api' for Vercel rewrite to work
 const API_BASE_URL =
@@ -261,6 +259,17 @@ export const assignExpert = async (bookingId, expertUserId) => {
   );
   return res.data;
 };
+
+export const updateHoodItem =
+  async (
+    hoodItemId,
+    payload,
+  ) => {
+    return apiClient.put(
+      `/hood-items/${hoodItemId}`,
+      payload,
+    );
+  };
 
 // ✅ Send Push Notification
 export const sendPushNotification = async ({

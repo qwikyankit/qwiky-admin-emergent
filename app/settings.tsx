@@ -10,14 +10,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   BackHandler,
-} from 'react-native';
+  Modal,
+  } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Toast from '../components/Toast';
-import { getToken, setToken, resetToken, fetchHoodDetails, updateHoodOperatingHours } from '../services/api';
+import { getToken, setToken, resetToken, fetchHoodDetails, updateHoodOperatingHours, fetchHoodItems, updateHoodItem } from '../services/api';
 import THEME from '../constants/theme';
+
 
 export default function Settings() {
   const router = useRouter();
@@ -29,7 +31,14 @@ export default function Settings() {
   const [showPicker, setShowPicker] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [timeType, setTimeType] = useState(null); // 'open' | 'close'
-
+  const [hoodItems, setHoodItems] = useState([]);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [priceModalVisible, setPriceModalVisible] =
+  useState(false);
+  const [selectedItem, setSelectedItem] =
+  useState(null);
+  const [newOfferPrice, setNewOfferPrice] =
+  useState('');
   const { hoodId, hoodName } = useLocalSearchParams();
 
   // Handle Android back button
@@ -49,6 +58,7 @@ export default function Settings() {
   useEffect(() => {
     if (hoodId) {
       loadHoodOperatingHours();
+      loadHoodItems();
     }
   }, [hoodId]);
 
@@ -74,13 +84,13 @@ const openPicker = (index, type) => {
   setShowPicker(true);
 };
 
-  const loadCurrentToken = async () => {
+const loadCurrentToken = async () => {
     const token = await getToken();
     setCurrentToken(token);
     setTokenInput(token);
   };
 
-  const handleBack = () => {
+const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -88,7 +98,7 @@ const openPicker = (index, type) => {
     }
   };
 
-  const loadHoodOperatingHours = async () => {
+const loadHoodOperatingHours = async () => {
   try {
     const hood = await fetchHoodDetails(hoodId as string);
     if (hood?.hoodOperatingHours) {
@@ -122,7 +132,7 @@ const handleUpdateOperatingHours = async () => {
   }
 }
 
-  const handleSaveToken = async () => {
+const handleSaveToken = async () => {
     if (!tokenInput.trim()) {
       showToast('Please enter a valid token', 'error');
       return;
@@ -140,7 +150,7 @@ const handleUpdateOperatingHours = async () => {
     }
   };
 
-  const handleResetToken = () => {
+const handleResetToken = () => {
     Alert.alert(
       'Reset Token',
       'Are you sure you want to reset to the default token?',
@@ -163,15 +173,119 @@ const handleUpdateOperatingHours = async () => {
     );
   };
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning') => {
+const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning') => {
     setToast({ visible: true, message, type });
   };
 
-  const maskToken = (token: string) => {
+const maskToken = (token: string) => {
     if (!token) return '';
     if (token.length <= 20) return token;
     return `${token.substring(0, 20)}...${token.substring(token.length - 10)}`;
   };
+
+const loadHoodItems = async () => {
+  try {
+    setLoadingItems(true);
+    const data =
+      await fetchHoodItems(
+        hoodId as string,
+      );
+
+    setHoodItems(
+  [...(data || [])]
+);
+  } catch (err) {
+    showToast(
+      'Failed to load hood items',
+      'error',
+    );
+  } finally {
+    setLoadingItems(false);
+  }
+};
+
+const handleToggleAvailability = async (item) => {
+  try {
+    await updateHoodItem(
+      item.id,
+      {
+        hoodId: item.hoodId,
+        itemId: item.itemId,
+        isAvailable: !item.isAvailable,
+        offerPrice:
+          item.offerPrice ??
+          item.itemDefaultPrice,
+      },
+    );
+    await loadHoodItems();
+  } catch (err) {
+    console.error('toggle failed', err);
+  }
+};
+
+const openPriceModal = (
+  item,
+) => {
+  setSelectedItem(item);
+ setNewOfferPrice(
+  String(
+    item.offerPrice ??
+    item.itemDefaultPrice ??
+    '',
+  ),
+);
+  setPriceModalVisible(true);
+};
+
+const confirmPriceUpdate = async () => {
+  try {
+    if (!selectedItem?.id) {
+      showToast(
+        'Invalid service selected',
+        'error',
+      );
+      return;
+    }
+
+    const price = Number(newOfferPrice);
+
+    await updateHoodItem(
+      selectedItem.id,
+      {
+        hoodId: selectedItem.hoodId,
+        itemId: selectedItem.itemId,
+        isAvailable:
+          selectedItem.isAvailable,
+        offerPrice: price,
+      },
+    );
+
+    showToast(
+      'Price updated successfully',
+      'success',
+    );
+
+    closePriceModal();
+
+    await loadHoodItems();
+  } catch (err) {
+    console.error(
+      'Price update failed:',
+      err,
+    );
+
+    showToast(
+      'Failed to update price',
+      'error',
+    );
+  }
+};
+
+const closePriceModal = () => {
+  setPriceModalVisible(false);
+  setSelectedItem(null);
+  setNewOfferPrice('');
+};
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -207,7 +321,6 @@ const handleUpdateOperatingHours = async () => {
           showsVerticalScrollIndicator={false}
         >
           {/* Operating Hours Section */}
-{/* OPERATING HOURS */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Ionicons name="time-outline" size={22} color={THEME.colors.primary} />
@@ -326,6 +439,104 @@ const handleUpdateOperatingHours = async () => {
               </TouchableOpacity>
             </View>
           </View>
+<View style={styles.section}>
+
+  <View style={styles.sectionHeader}>
+    <Ionicons
+      name="pricetag-outline"
+      size={22}
+      color={THEME.colors.primary}
+    />
+
+    <Text style={styles.sectionTitle}>
+      Hood Items
+    </Text>
+  </View>
+<ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={{
+    paddingVertical: 8,
+  }}
+>
+  {hoodItems.map((item) => {
+   const effectivePrice =
+  item.offerPrice ??
+  item.itemDefaultPrice;
+
+const discount =
+  item.offerPrice
+    ? item.itemDefaultPrice - item.offerPrice
+    : 0;
+
+    return (
+      <View
+        key={item.id}
+        style={styles.serviceCard}
+      >
+ <View style={styles.cardHeader}>
+  <TouchableOpacity
+    style={[
+      styles.serviceToggle,
+      item.isAvailable
+        ? styles.serviceToggleOn
+        : styles.serviceToggleOff,
+    ]}
+    onPress={() =>
+      handleToggleAvailability(item)
+    }
+  >
+    <View
+      style={[
+        styles.serviceToggleThumb,
+        item.isAvailable
+          ? styles.serviceToggleThumbRight
+          : styles.serviceToggleThumbLeft,
+      ]}
+    />
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    onPress={() => openPriceModal(item)}
+  >
+    <Ionicons
+      name="create-outline"
+      size={20}
+      color={THEME.colors.primary}
+    />
+  </TouchableOpacity>
+</View>
+        
+
+        <Text style={styles.serviceTitle}>
+          {item.productName}
+        </Text>
+
+      <View style={styles.priceRow}>
+        
+  <Text style={styles.offerPrice}>
+    ₹{effectivePrice}
+  </Text>
+
+  {item.offerPrice && (
+    <Text style={styles.strikePrice}>
+      ₹{item.itemDefaultPrice}
+    </Text>
+  )}
+</View>
+{discount > 0 && (
+  <View style={styles.discountBadge}>
+    <Text style={styles.discountText}>
+      Save ₹{discount}
+    </Text>
+  </View>
+)}
+</View>
+    );
+  })}
+</ScrollView>
+</View>
+
           {/* Token Management Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -460,6 +671,93 @@ const handleUpdateOperatingHours = async () => {
     }}
   />
 )}
+<Modal
+  visible={priceModalVisible}
+  transparent
+  animationType="slide"
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+
+      <Text style={styles.modalTitle}>
+        Update Offer Price
+      </Text>
+
+    <Text style={{ fontSize: 16, fontWeight: '600' }}>
+  {selectedItem?.productName}
+</Text>
+
+<Text
+  style={{
+    marginTop: 8,
+    color: '#666',
+  }}
+>
+  Current Price:
+  ₹{
+    selectedItem?.offerPrice ??
+    selectedItem?.itemDefaultPrice
+  }
+</Text>
+
+<Text
+  style={{
+    color: '#999',
+    marginBottom: 16,
+  }}
+>
+
+  ₹{selectedItem?.itemDefaultPrice}
+</Text>
+
+      <TextInput
+        keyboardType="numeric"
+        value={newOfferPrice}
+        onChangeText={setNewOfferPrice}
+        style={styles.priceInput}
+      />
+
+      <View style={styles.modalActions}>
+     <TouchableOpacity
+  style={{
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  }}
+    onPress={closePriceModal}
+>
+  <Text
+    style={{
+      color: '#666',
+      fontWeight: '600',
+    }}
+  >
+    Cancel
+  </Text>
+</TouchableOpacity>
+
+<TouchableOpacity
+  style={{
+    backgroundColor: THEME.colors.primary,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  }}
+  onPress={confirmPriceUpdate}
+>
+  <Text
+    style={{
+      color: '#FFF',
+      fontWeight: '700',
+    }}
+  >
+    Update
+  </Text>
+</TouchableOpacity>
+      </View>
+
+    </View>
+  </View>
+</Modal>
     </SafeAreaView>
   );
 }
@@ -656,33 +954,7 @@ const styles = StyleSheet.create({
     color: THEME.colors.text,
     fontWeight: '500',
   },
-timeInput: {
-  backgroundColor: '#F5F5F5',
-  borderRadius: 8,
-  paddingVertical: 6,
-  paddingHorizontal: 8,
-  fontSize: 12,
-  width: 80,
-  textAlign: 'center',
-},
-
-closedToggle: {
-  marginLeft: 8,
-  paddingHorizontal: 10,
-  paddingVertical: 6,
-  borderRadius: 8,
-  backgroundColor: '#F5F5F5',
-},
-
-closedToggleActive: {
-  backgroundColor: THEME.colors.cancelled,
-},
-
-closedText: {
-  fontSize: 12,
-  fontWeight: '600',
-  color: THEME.colors.textSecondary,
-},hourRow: {
+hourRow: {
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'space-between',
@@ -706,9 +978,6 @@ closedDayText: {
   timeContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center' },
   timeBox: { backgroundColor: '#F2F4F7', padding: 8, borderRadius: 10, minWidth: 70, alignItems: 'center' },
   timeText: { fontWeight: '600' },
-  toggleButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#EEE' },
-  toggleButtonActive: { backgroundColor: THEME.colors.cancelled },
-  toggleText: { fontSize: 12, fontWeight: '600' },
   switchContainer: {
   marginLeft: 12,
 },
@@ -746,5 +1015,136 @@ closedDayText: {
 
   switchThumbLeft: {
     alignSelf: 'flex-start',
-  }
+  },
+  serviceCard: {
+  width: 220,
+  backgroundColor: '#FFF',
+  borderRadius: 16,
+  padding: 16,
+  marginRight: 12,
+  shadowColor: '#000',
+  shadowOffset: {
+    width: 0,
+    height: 2,
+  },
+  shadowOpacity: 0.08,
+  shadowRadius: 8,
+  elevation: 3,
+  minHeight: 200
+},
+
+discountBadge: {
+  alignSelf: 'center',
+  marginTop: 10,
+  backgroundColor: '#F3E8FF',
+  borderRadius: 999,
+  paddingHorizontal: 14,
+  paddingVertical: 6,
+},
+discountText: {
+  color: THEME.colors.primary,
+  fontWeight: '700',
+  fontSize: 13,
+},
+serviceTitle: {
+  fontSize: 24,
+  fontWeight: '700',
+  textAlign: 'center',
+  marginTop: 18,
+  color: THEME.colors.primary,
+},
+
+priceRow: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginTop: 16,
+},
+
+offerPrice: {
+  fontSize: 34,
+  fontWeight: '800',
+  color: '#111',
+},
+strikePrice: {
+  marginLeft: 8,
+  textDecorationLine: 'line-through',
+  color: '#9CA3AF',
+  fontSize: 22,
+  fontWeight: '500',
+},
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+modalContent: {
+  width: '90%',
+  maxWidth: 420,
+  backgroundColor: '#FFF',
+  borderRadius: 20,
+  padding: 24,
+},
+
+modalTitle: {
+  fontSize: 20,
+  fontWeight: '700',
+  marginBottom: 16,
+  color: THEME.colors.text,
+},
+
+priceInput: {
+  borderWidth: 1,
+  borderColor: '#DDD',
+  borderRadius: 12,
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  marginTop: 16,
+  marginBottom: 20,
+  fontSize: 18,
+},
+
+modalActions: {
+  flexDirection: 'row',
+  justifyContent: 'flex-end',
+  gap: 12,
+},
+cardHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+
+serviceToggle: {
+  width: 42,
+  height: 24,
+  borderRadius: 12,
+  padding: 2,
+},
+
+serviceToggleOn: {
+  backgroundColor: '#22C55E',
+},
+
+serviceToggleOff: {
+  backgroundColor: '#D1D5DB',
+},
+
+serviceToggleThumb: {
+  width: 20,
+  height: 20,
+  borderRadius: 10,
+  backgroundColor: '#FFF',
+},
+
+serviceToggleThumbRight: {
+  alignSelf: 'flex-end',
+},
+
+serviceToggleThumbLeft: {
+  alignSelf: 'flex-start',
+},
 });
+
