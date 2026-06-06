@@ -174,7 +174,7 @@ export const settleBooking = async (bookingId: string) => {
 
 // Fetch hood details including operating hours
 export const fetchHoodDetails = async (
-  hoodId: string = HOOD_ID
+  hoodId
 ) => {
   const response = await apiClient.get(`/hoods/${hoodId}`);
   return response.data;
@@ -182,8 +182,8 @@ export const fetchHoodDetails = async (
 
 // Update hood operating hours (single day or full week)
 export const updateHoodOperatingHours = async (
-  payload: any,
-  hoodId: string = HOOD_ID
+  payload,
+  hoodId
 ) => {
   const body = Array.isArray(payload) ? payload : [payload];
 
@@ -303,6 +303,50 @@ export const sendPushNotification = async ({
     }
   );
   return response.data;
+};
+
+export const deleteHoodUser = async (
+  hoodId,
+  userId,
+) => {
+  const res = await apiClient.delete(
+    `/hood-users/${hoodId}/user/${userId}`
+  );
+
+  return res.data;
+};
+
+
+export const createHoodUser = async (
+  payload,
+) => {
+  const res = await apiClient.post(
+    '/hood-users',
+    payload,
+  );
+
+  return res.data;
+};
+
+
+export const updateHoodUserStatus = async (
+  hoodId,
+  userId,
+  status,
+) => {
+  const res = await apiClient.put(
+    `/hood-users/${hoodId}/user/${userId}`,
+    {
+      status,
+    },
+    {
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+      },
+    },
+  );
+
+  return res.data;
 };
 
 export default apiClient;

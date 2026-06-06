@@ -17,16 +17,32 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Toast from '../components/Toast';
-import { getToken, setToken, resetToken, fetchHoodDetails, updateHoodOperatingHours, fetchHoodItems, updateHoodItem } from '../services/api';
 import THEME from '../constants/theme';
-
+import OperatingHoursSection from '../components/OperatingHoursSection';
+import HoodItemsSection from '../components/HoodItemsSection';
+import HoodExpertsSection from '../components/HoodExpertsSection';
+import {
+  getToken,
+  setToken,
+  resetToken,
+  fetchHoodDetails,
+  updateHoodOperatingHours,
+  fetchHoodItems,
+  updateHoodItem,
+  fetchHoodExperts,
+  fetchHoods,
+  createHoodUser,
+  deleteHoodUser,
+  updateHoodUserStatus,
+  getErrorMessage,
+} from '../services/api';
 
 export default function Settings() {
   const router = useRouter();
   const [tokenInput, setTokenInput] = useState('');
   const [currentToken, setCurrentToken] = useState('');
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as const });
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
   const [operatingHours, setOperatingHours] = useState([]);
   const [showPicker, setShowPicker] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(null);
@@ -39,6 +55,28 @@ export default function Settings() {
   useState(null);
   const [newOfferPrice, setNewOfferPrice] =
   useState('');
+  const [hoodUsers, setHoodUsers] =
+  useState([]);
+  const [allHoods, setAllHoods] =
+  useState([]);
+  const [
+  selectedTargetHoods,
+  setSelectedTargetHoods,
+] = useState({});
+const [hoodModalVisible, setHoodModalVisible] =
+  useState(false);
+
+const [selectedUser, setSelectedUser] =
+  useState(null);
+  const [
+  deleteModalVisible,
+  setDeleteModalVisible,
+] = useState(false);
+
+const [
+  selectedDeleteUser,
+  setSelectedDeleteUser,
+] = useState(null);
   const { hoodId, hoodName } = useLocalSearchParams();
 
   // Handle Android back button
@@ -47,7 +85,6 @@ export default function Settings() {
       handleBack();
       return true;
     });
-
     return () => backHandler.remove();
   }, []);
 
@@ -59,11 +96,47 @@ export default function Settings() {
     if (hoodId) {
       loadHoodOperatingHours();
       loadHoodItems();
+      loadHoodUsers();
+      loadAllHoods();
     }
   }, [hoodId]);
 
+  const loadHoodUsers = async () => {
+  try {
+    const data =
+      await fetchHoodExperts(
+        hoodId,
+      );
 
-  const timeStringToDate = (timeStr) => {
+    setHoodUsers(
+      data || [],
+    );
+  } catch {
+    showToast(
+      'Failed to load experts',
+      'error',
+    );
+  }
+};
+
+const loadAllHoods = async () => {
+  try {
+    const data =
+      await fetchHoods();
+
+    setAllHoods(
+      data || [],
+    );
+  } catch {
+    showToast(
+      'Failed to load hoods',
+      'error',
+    );
+  }
+};
+
+
+const timeStringToDate = (timeStr) => {
   const [hours, minutes] = timeStr.split(':');
   const date = new Date();
   date.setHours(parseInt(hours));
@@ -100,7 +173,7 @@ const handleBack = () => {
 
 const loadHoodOperatingHours = async () => {
   try {
-    const hood = await fetchHoodDetails(hoodId as string);
+    const hood = await fetchHoodDetails(hoodId);
     if (hood?.hoodOperatingHours) {
       // Sort by dayOfWeek (1 = Monday)
       const sortedHours = hood.hoodOperatingHours
@@ -123,7 +196,7 @@ const loadHoodOperatingHours = async () => {
 const handleUpdateOperatingHours = async () => {
   try {
     setLoading(true);
-    await updateHoodOperatingHours(operatingHours, hoodId as string);
+    await updateHoodOperatingHours(operatingHours, hoodId);
     showToast('Operating hours updated successfully!', 'success');
   } catch (err) {
     showToast('Failed to update operating hours', 'error');
@@ -173,11 +246,11 @@ const handleResetToken = () => {
     );
   };
 
-const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning') => {
+const showToast = (message, type) => {
     setToast({ visible: true, message, type });
   };
 
-const maskToken = (token: string) => {
+const maskToken = (token) => {
     if (!token) return '';
     if (token.length <= 20) return token;
     return `${token.substring(0, 20)}...${token.substring(token.length - 10)}`;
@@ -188,12 +261,14 @@ const loadHoodItems = async () => {
     setLoadingItems(true);
     const data =
       await fetchHoodItems(
-        hoodId as string,
+        hoodId,
       );
+  setHoodItems([...(data || [])].sort(
+    (a, b) =>
+      (a.sequenceNumber || 999) -
+      (b.sequenceNumber || 999)
+  ));
 
-    setHoodItems(
-  [...(data || [])]
-);
   } catch (err) {
     showToast(
       'Failed to load hood items',
@@ -228,11 +303,9 @@ const openPriceModal = (
 ) => {
   setSelectedItem(item);
  setNewOfferPrice(
-  String(
     item.offerPrice ??
     item.itemDefaultPrice ??
     '',
-  ),
 );
   setPriceModalVisible(true);
 };
@@ -287,6 +360,172 @@ const closePriceModal = () => {
   setNewOfferPrice('');
 };
 
+const handleToggleOperatingDay = async (index) => {
+  const previousDay = operatingHours[index];
+
+  const updatedDay = {
+    ...previousDay,
+    isClosed: !previousDay.isClosed,
+  };
+
+  const updatedHours = [...operatingHours];
+  updatedHours[index] = updatedDay;
+
+  // Optimistic update
+  setOperatingHours(updatedHours);
+
+  try {
+    setLoading(true);
+
+    await updateHoodOperatingHours(
+      [updatedDay],
+      hoodId,
+    );
+
+    showToast(
+      updatedDay.isClosed
+        ? 'Day closed successfully'
+        : 'Day opened successfully',
+      'success',
+    );
+  } catch (err) {
+    // rollback
+    const reverted = [...operatingHours];
+    reverted[index] = previousDay;
+
+    setOperatingHours(reverted);
+
+    showToast(
+      'Failed to update operating hours',
+      'error',
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+const handleToggleExpertStatus = async (
+  user,
+) => {
+  try {
+    setLoading(true);
+
+    const nextStatus =
+      user.status === 'ACTIVE'
+        ? 'INACTIVE'
+        : 'ACTIVE';
+
+    await updateHoodUserStatus(
+      user.hoodId,
+      user.userId,
+      nextStatus,
+    );
+
+    await loadHoodUsers();
+
+    showToast(
+      `Expert ${nextStatus.toLowerCase()} successfully`,
+      'success',
+    );
+  } catch (error) {
+    showToast(
+      getErrorMessage(error),
+      'error',
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleTransferExpert = async (
+  user,
+) => {
+  try {
+    const targetHoodId =
+      selectedTargetHoods[
+        user.userId
+      ];
+
+    if (!targetHoodId) {
+      showToast(
+        'Please select target hood',
+        'error',
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    await deleteHoodUser(
+      user.hoodId,
+      user.userId,
+    );
+
+    await createHoodUser({
+      hoodId: targetHoodId,
+      userId: user.userId,
+      role: user.role,
+      status: user.status,
+    });
+
+    setSelectedTargetHoods(prev => {
+  const updated = { ...prev };
+  delete updated[user.userId];
+  return updated;
+});
+
+    showToast(
+      'Expert transferred successfully',
+      'success',
+    );
+
+    await Promise.all([
+  loadHoodUsers(),
+  loadAllHoods(),
+]);
+  } catch (error) {
+    showToast(
+      getErrorMessage(error),
+      'error',
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
+const confirmDeleteExpert = async (
+  user,
+) => {
+   console.log(
+    'Deleting...',
+    user.hoodId,
+    user.userId,
+  );
+  try {
+    setLoading(true);
+
+    await deleteHoodUser(
+      user.hoodId,
+      user.userId,
+    );
+
+    await loadHoodUsers();
+
+    showToast(
+      'Expert removed successfully',
+      'success',
+    );
+  } catch (error) {
+    showToast(
+      getErrorMessage(error),
+      'error',
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Toast
@@ -321,221 +560,45 @@ const closePriceModal = () => {
           showsVerticalScrollIndicator={false}
         >
           {/* Operating Hours Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="time-outline" size={22} color={THEME.colors.primary} />
-              <Text style={styles.sectionTitle}>Operating Hours</Text>
-            </View>
+      <OperatingHoursSection
+  operatingHours={operatingHours}
+  setOperatingHours={setOperatingHours}
+  loading={loading}
+  handleUpdateOperatingHours={handleUpdateOperatingHours}
+  handleToggleOperatingDay={
+    handleToggleOperatingDay
+  }
+  openPicker={openPicker}
+/>
 
-            <View style={styles.infoCard}>
-              {operatingHours.map((day, index) => (
-                <View key={day.dayOfWeek} style={styles.hourRow}>
-                  
-                  <Text style={styles.dayLabel}>
-                    {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][day.dayOfWeek - 1]}
-                  </Text>
+<HoodItemsSection
+  hoodItems={hoodItems}
+  handleToggleAvailability={
+    handleToggleAvailability
+  }
+  openPriceModal={openPriceModal}
+/>
 
-                  {day.isClosed ? (
-                    <Text style={styles.closedDayText}>Closed</Text>
-                  ) : (
-                    <View style={styles.timeContainer}>
-                      {Platform.OS === 'web' ? (
-                        <>
-                          <input
-                            type="time"
-                            value={day.openTime ? day.openTime.slice(0, 5) : ''}
-                            onChange={(e) => {
-                              const updated = [...operatingHours];
-                              updated[index].openTime = e.target.value + ':00';
-                              setOperatingHours(updated);
-                            }}
-                          />
-                          <Text style={styles.timeDash}>-</Text>
-                          <input
-                            type="time"
-                            value={day.closeTime ? day.closeTime.slice(0, 5) : ''}
-                            onChange={(e) => {
-                              const updated = [...operatingHours];
-                              updated[index].closeTime = e.target.value + ':00';
-                              setOperatingHours(updated);
-                            }}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <TouchableOpacity style={styles.timeBox} onPress={() => openPicker(index, 'open')}>
-                            <Text style={styles.timeText}>{day.openTime.slice(0, 5)}</Text>
-                          </TouchableOpacity>
-                          <Text style={styles.timeDash}>-</Text>
-                          <TouchableOpacity style={styles.timeBox} onPress={() => openPicker(index, 'close')}>
-                            <Text style={styles.timeText}>{day.closeTime.slice(0, 5)}</Text>
-                          </TouchableOpacity>
-                        </>
-                      )}
-                    </View>
-                  )}
-                  <View style={styles.switchContainer}>
-                    <TouchableOpacity
-                      activeOpacity={0.85}
-                      disabled={loading}
-                      onPress={async () => {
-                        const previousState = operatingHours[index];
 
-                        const updatedDay = {
-                          ...previousState,
-                          isClosed: !previousState.isClosed,
-                        };
-
-                        const updatedHours = [...operatingHours];
-                        updatedHours[index] = updatedDay;
-                        setOperatingHours(updatedHours);
-
-                        try {
-                          setLoading(true);
-                          await updateHoodOperatingHours([updatedDay], hoodId as string);
-
-                          showToast(
-                            updatedDay.isClosed
-                              ? 'Hood closed successfully'
-                              : 'Hood opened successfully',
-                            'success'
-                          );
-                        } catch (err) {
-                          const reverted = [...operatingHours];
-                          reverted[index] = previousState;
-                          setOperatingHours(reverted);
-                          showToast('Failed to update hood status', 'error');
-                        } finally {
-                          setLoading(false);
-                        }
-                      }}
-                      style={[
-                        styles.switchTrack,
-                        day.isClosed ? styles.switchTrackInactive : styles.switchTrackActive,
-                        loading && { opacity: 0.6 }
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.switchThumb,
-                          day.isClosed
-                            ? styles.switchThumbLeft
-                            : styles.switchThumbRight,
-                        ]}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-
-              <TouchableOpacity
-                style={[styles.button, styles.saveButton, { marginTop: 16 }]}
-                onPress={handleUpdateOperatingHours}
-                disabled={loading}
-              >
-                <Text style={styles.saveButtonText}>
-                  {loading ? 'Updating...' : 'Update Hours'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-<View style={styles.section}>
-
-  <View style={styles.sectionHeader}>
-    <Ionicons
-      name="pricetag-outline"
-      size={22}
-      color={THEME.colors.primary}
-    />
-
-    <Text style={styles.sectionTitle}>
-      Hood Items
-    </Text>
-  </View>
-<ScrollView
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  contentContainerStyle={{
-    paddingVertical: 8,
-  }}
->
-  {hoodItems.map((item) => {
-   const effectivePrice =
-  item.offerPrice ??
-  item.itemDefaultPrice;
-
-const discount =
-  item.offerPrice
-    ? item.itemDefaultPrice - item.offerPrice
-    : 0;
-
-    return (
-      <View
-        key={item.id}
-        style={styles.serviceCard}
-      >
- <View style={styles.cardHeader}>
-  <TouchableOpacity
-    style={[
-      styles.serviceToggle,
-      item.isAvailable
-        ? styles.serviceToggleOn
-        : styles.serviceToggleOff,
-    ]}
-    onPress={() =>
-      handleToggleAvailability(item)
-    }
-  >
-    <View
-      style={[
-        styles.serviceToggleThumb,
-        item.isAvailable
-          ? styles.serviceToggleThumbRight
-          : styles.serviceToggleThumbLeft,
-      ]}
-    />
-  </TouchableOpacity>
-
-  <TouchableOpacity
-    onPress={() => openPriceModal(item)}
-  >
-    <Ionicons
-      name="create-outline"
-      size={20}
-      color={THEME.colors.primary}
-    />
-  </TouchableOpacity>
-</View>
-        
-
-        <Text style={styles.serviceTitle}>
-          {item.productName}
-        </Text>
-
-      <View style={styles.priceRow}>
-        
-  <Text style={styles.offerPrice}>
-    ₹{effectivePrice}
-  </Text>
-
-  {item.offerPrice && (
-    <Text style={styles.strikePrice}>
-      ₹{item.itemDefaultPrice}
-    </Text>
-  )}
-</View>
-{discount > 0 && (
-  <View style={styles.discountBadge}>
-    <Text style={styles.discountText}>
-      Save ₹{discount}
-    </Text>
-  </View>
-)}
-</View>
-    );
-  })}
-</ScrollView>
-</View>
+<HoodExpertsSection
+  hoodUsers={hoodUsers}
+  allHoods={allHoods}
+  selectedTargetHoods={selectedTargetHoods}
+  handleTransferExpert={
+    handleTransferExpert
+  }
+  handleToggleExpertStatus={
+    handleToggleExpertStatus
+  }
+  setSelectedUser={setSelectedUser}
+  setHoodModalVisible={
+    setHoodModalVisible
+  }
+  handleDeleteExpert={(user) => {
+  setSelectedDeleteUser(user);
+  setDeleteModalVisible(true);
+}}
+/>
 
           {/* Token Management Section */}
           <View style={styles.section}>
@@ -672,6 +735,68 @@ const discount =
   />
 )}
 <Modal
+  visible={hoodModalVisible}
+  transparent
+  animationType="slide"
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+
+      <Text style={styles.modalTitle}>
+        Select Target Hood
+      </Text>
+
+      <ScrollView
+        style={{ maxHeight: 300 }}
+      >
+        {allHoods
+          .filter(
+            hood =>
+              hood.id !== selectedUser?.hoodId
+          )
+          .map((hood) => (
+            <TouchableOpacity
+              key={hood.id}
+              style={{
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#EEE',
+              }}
+              onPress={() => {
+                setSelectedTargetHoods({
+                  ...selectedTargetHoods,
+                  [selectedUser.userId]:
+                    hood.id,
+                });
+
+                setHoodModalVisible(
+                  false,
+                );
+              }}
+            >
+              <Text>
+                {hood.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+      </ScrollView>
+
+      <TouchableOpacity
+        onPress={() =>
+          setHoodModalVisible(false)
+        }
+        style={{
+          marginTop: 16,
+          alignItems: 'center',
+        }}
+      >
+        <Text>Close</Text>
+      </TouchableOpacity>
+
+    </View>
+  </View>
+</Modal>
+<Modal
   visible={priceModalVisible}
   transparent
   animationType="slide"
@@ -755,6 +880,72 @@ const discount =
 </TouchableOpacity>
       </View>
 
+    </View>
+  </View>
+</Modal>
+<Modal
+  visible={deleteModalVisible}
+  transparent
+  animationType="fade"
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>
+        Delete Expert
+      </Text>
+
+      <Text
+        style={{
+          color: '#666',
+          marginBottom: 20,
+          lineHeight: 22,
+        }}
+      >
+        Are you sure you want to remove{' '}
+        <Text style={{ fontWeight: '700' }}>
+          {selectedDeleteUser?.userName}
+        </Text>
+        {' '}from this hood?
+      </Text>
+
+      <View style={styles.modalActions}>
+        <TouchableOpacity
+          onPress={() => {
+            setDeleteModalVisible(false);
+            setSelectedDeleteUser(null);
+          }}
+        >
+          <Text
+            style={{
+              color: '#666',
+              fontWeight: '600',
+            }}
+          >
+            Cancel
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={async () => {
+            setDeleteModalVisible(false);
+
+            await confirmDeleteExpert(
+              selectedDeleteUser,
+            );
+
+            setSelectedDeleteUser(null);
+          }}
+        >
+          <Text
+            style={{
+              color: '#DC2626',
+              fontWeight: '700',
+            }}
+          >
+            Delete
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   </View>
 </Modal>
@@ -954,125 +1145,11 @@ const styles = StyleSheet.create({
     color: THEME.colors.text,
     fontWeight: '500',
   },
-hourRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 14,
-},
-dayLabel: {
-  width: 45,
-  fontSize: 14,
-  fontWeight: '600',
-  color: THEME.colors.text,
-},
-timeDash: {
-  marginHorizontal: 6,
-},
-closedDayText: {
-  flex: 1,
-  textAlign: 'center',
-  fontWeight: '600',
-  color: THEME.colors.cancelled,
-},
-  timeContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center' },
-  timeBox: { backgroundColor: '#F2F4F7', padding: 8, borderRadius: 10, minWidth: 70, alignItems: 'center' },
-  timeText: { fontWeight: '600' },
-  switchContainer: {
-  marginLeft: 12,
-},
-  switchTrack: {
-    width: 50,
-    height: 28,
-    borderRadius: 20,
-    padding: 3,
-    justifyContent: 'center',
-  },
 
-  switchTrackActive: {
-    backgroundColor: '#2E7D32', // Green (Open)
-  },
+ 
 
-  switchTrackInactive: {
-    backgroundColor: '#C62828', // Red (Closed)
-  },
 
-  switchThumb: {
-    width: 22,
-    height: 22,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-  },
 
-  switchThumbRight: {
-    alignSelf: 'flex-end',
-  },
-
-  switchThumbLeft: {
-    alignSelf: 'flex-start',
-  },
-  serviceCard: {
-  width: 220,
-  backgroundColor: '#FFF',
-  borderRadius: 16,
-  padding: 16,
-  marginRight: 12,
-  shadowColor: '#000',
-  shadowOffset: {
-    width: 0,
-    height: 2,
-  },
-  shadowOpacity: 0.08,
-  shadowRadius: 8,
-  elevation: 3,
-  minHeight: 200
-},
-
-discountBadge: {
-  alignSelf: 'center',
-  marginTop: 10,
-  backgroundColor: '#F3E8FF',
-  borderRadius: 999,
-  paddingHorizontal: 14,
-  paddingVertical: 6,
-},
-discountText: {
-  color: THEME.colors.primary,
-  fontWeight: '700',
-  fontSize: 13,
-},
-serviceTitle: {
-  fontSize: 24,
-  fontWeight: '700',
-  textAlign: 'center',
-  marginTop: 18,
-  color: THEME.colors.primary,
-},
-
-priceRow: {
-  flexDirection: 'row',
-  justifyContent: 'center',
-  alignItems: 'center',
-  marginTop: 16,
-},
-
-offerPrice: {
-  fontSize: 34,
-  fontWeight: '800',
-  color: '#111',
-},
-strikePrice: {
-  marginLeft: 8,
-  textDecorationLine: 'line-through',
-  color: '#9CA3AF',
-  fontSize: 22,
-  fontWeight: '500',
-},
 modalOverlay: {
   flex: 1,
   backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1110,41 +1187,6 @@ modalActions: {
   flexDirection: 'row',
   justifyContent: 'flex-end',
   gap: 12,
-},
-cardHeader: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-},
-
-serviceToggle: {
-  width: 42,
-  height: 24,
-  borderRadius: 12,
-  padding: 2,
-},
-
-serviceToggleOn: {
-  backgroundColor: '#22C55E',
-},
-
-serviceToggleOff: {
-  backgroundColor: '#D1D5DB',
-},
-
-serviceToggleThumb: {
-  width: 20,
-  height: 20,
-  borderRadius: 10,
-  backgroundColor: '#FFF',
-},
-
-serviceToggleThumbRight: {
-  alignSelf: 'flex-end',
-},
-
-serviceToggleThumbLeft: {
-  alignSelf: 'flex-start',
 },
 });
 
