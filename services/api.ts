@@ -1,14 +1,14 @@
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '../constants/storage';
+import { redirectToLogin } from "../utils/navigation";
 
-const TOKEN_STORAGE_KEY = 'qwiky_admin_token';
 
 const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
 
 const ONESIGNAL_API_KEY = process.env.EXPO_PUBLIC_ONESIGNAL_API_KEY;
 
 // Default token from environment
-const DEFAULT_TOKEN = process.env.EXPO_PUBLIC_QWIKY_TOKEN;
 
 // IMPORTANT: Must stay '/api' for Vercel rewrite to work
 const API_BASE_URL =
@@ -16,13 +16,35 @@ const API_BASE_URL =
   'https://api.qwiky.in/qwiky-service/api/v1';
 
 
-
 // Hardcoded Hood ID (as requested)
 const HOOD_ID =
   process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID ||
   '4dd4d3a6-c0b3-4042-8e01-5b9299273ee1';
 
-let currentToken = DEFAULT_TOKEN;
+export const getFriendlyError = error => {
+  const code = error?.friendlyMessage || "";
+
+  switch (code) {
+    case "otp_not_verified":
+      return "Incorrect OTP. Please try again.";
+
+    case "otp_expired":
+      return "OTP has expired. Please request a new OTP.";
+
+    case "otp_not_found":
+      return "Please request an OTP first.";
+
+    case "user_not_found":
+      return "You are not authorized to access Qwiky Admin.";
+
+    case "invalid_mobile_number":
+      return "Please enter a valid mobile number.";
+
+    default:
+      return code || "Something went wrong. Please try again.";
+  }
+};
+
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
@@ -35,47 +57,52 @@ const apiClient: AxiosInstance = axios.create({
 
 // Request interceptor to attach token
 apiClient.interceptors.request.use(
-  async (config) => {
-    try {
-      const storedToken = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
-      if (storedToken) {
-        currentToken = storedToken;
-      }
-    } catch {
-      // Ignore storage failures
-    }
+  async config => {
+    const token = await getToken();
+    config.headers.Accept =
+      'application/json';
 
-    if (currentToken) {
-      config.headers.Authorization = `Bearer ${currentToken}`;
+    config.headers['Content-Type'] =
+      'application/json';
+
+    if (token) {
+      config.headers.Authorization =
+        `Bearer ${token}`;
     }
 
     return config;
   },
-  (error) => Promise.reject(error)
 );
 
 // Response interceptor for error handling
+
 apiClient.interceptors.response.use(
-  (response) => response,
-  (error: AxiosError) => {
-    let errorMessage = 'An unexpected error occurred';
+  response => response,
+
+  async error => {
+    let errorMessage = "Something went wrong";
 
     if (error.response) {
-      const data = error.response.data as any;
+      const data = error.response.data;
+
       errorMessage =
         data?.detail ||
         data?.message ||
         `Error: ${error.response.status}`;
-      console.error('API Error:', error.response.status, errorMessage);
-    } else if (error.request) {
-      errorMessage = 'Network error. Please check your connection.';
-      console.error('Network Error:', error.message);
-    } else {
-      errorMessage = error.message || 'Request failed';
-      console.error('Request Error:', error.message);
     }
 
-    (error as any).friendlyMessage = errorMessage;
+    error.friendlyMessage = errorMessage;
+
+    if (error.response?.status === 401) {
+      console.log("Session expired");
+
+      await removeToken();
+
+      redirectToLogin();
+
+      return Promise.reject(error);
+    }
+
     return Promise.reject(error);
   }
 );
@@ -96,38 +123,6 @@ export interface PaginatedResponse {
     number: number;
   };
 }
-
-// --------------------
-// TOKEN MANAGEMENT
-// --------------------
-
-export const getToken = async (): Promise<string> => {
-  try {
-    const storedToken = await AsyncStorage.getItem(TOKEN_STORAGE_KEY);
-    return storedToken || DEFAULT_TOKEN;
-  } catch {
-    return DEFAULT_TOKEN;
-  }
-};
-
-export const setToken = async (token: string): Promise<void> => {
-  try {
-    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, token);
-    currentToken = token;
-  } catch (e) {
-    console.error('Failed to save token:', e);
-    throw e;
-  }
-};
-
-export const resetToken = async (): Promise<void> => {
-  try {
-    await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
-    currentToken = DEFAULT_TOKEN;
-  } catch (e) {
-    console.error('Failed to reset token:', e);
-  }
-};
 
 // Fetch all hoods
 export const fetchHoods = async () => {
@@ -348,5 +343,125 @@ export const updateHoodUserStatus = async (
 
   return res.data;
 };
+
+
+/*
+|--------------------------------------------------------------------------
+| Authentication
+|--------------------------------------------------------------------------
+*/
+
+export const requestOtp = async (
+  mobileNumber,
+  countryCode = '91',
+) => {
+  const response = await apiClient.post(
+    '/auth/otp/request',
+    {
+      mobileNumber,
+      countryCode,
+    },
+  );
+
+  return response.data;
+};
+
+export const verifyOtp = async (
+  mobileNumber,
+  otp,
+  countryCode = "91",
+) => {
+  const response = await apiClient.post(
+    "/auth/otp/verify",
+    {
+      mobileNumber,
+      countryCode,
+      otp,
+    },
+  );
+
+  const data = response.data;
+
+  const auth = data?.authResponse;
+
+  if (!auth?.accessToken) {
+    throw new Error("Token not received");
+  }
+
+  await saveToken(auth.accessToken);
+
+  await saveRefreshToken(
+    auth.refreshToken,
+  );
+
+  if (data.user) {
+    await saveUser(data.user);
+  }
+
+  return data;
+};
+
+export const logout = async () => {
+    await removeToken();
+};
+
+export const saveToken = async token => {
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.TOKEN,
+    token,
+  );
+};
+
+export const getToken = async () => {
+  return AsyncStorage.getItem(
+    STORAGE_KEYS.TOKEN,
+  );
+};
+
+export const getRefreshToken = async () => {
+  return AsyncStorage.getItem(
+    STORAGE_KEYS.REFRESH_TOKEN,
+  );
+};
+
+export const removeToken = async () => {
+    await AsyncStorage.multiRemove([
+    STORAGE_KEYS.TOKEN,
+    STORAGE_KEYS.REFRESH_TOKEN,
+    STORAGE_KEYS.USER,
+  ]);
+};
+
+export const saveUser = async user => {
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.USER,
+    JSON.stringify(user),
+  );
+};
+
+export const getUser = async () => {
+  const user =
+    await AsyncStorage.getItem(
+      STORAGE_KEYS.USER,
+    );
+
+  return user
+    ? JSON.parse(user)
+    : null;
+};
+
+export const isLoggedIn = async () => {
+  const token = await getToken();
+
+  return !!token;
+};
+
+export const saveRefreshToken = async token => {
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.REFRESH_TOKEN,
+    token,
+  );
+};
+
 
 export default apiClient;

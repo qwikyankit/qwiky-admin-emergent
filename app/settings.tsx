@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   BackHandler,
@@ -22,9 +21,8 @@ import OperatingHoursSection from '../components/OperatingHoursSection';
 import HoodItemsSection from '../components/HoodItemsSection';
 import HoodExpertsSection from '../components/HoodExpertsSection';
 import {
+  logout,
   getToken,
-  setToken,
-  resetToken,
   fetchHoodDetails,
   updateHoodOperatingHours,
   fetchHoodItems,
@@ -39,8 +37,6 @@ import {
 
 export default function Settings() {
   const router = useRouter();
-  const [tokenInput, setTokenInput] = useState('');
-  const [currentToken, setCurrentToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
   const [operatingHours, setOperatingHours] = useState([]);
@@ -72,6 +68,8 @@ const [selectedUser, setSelectedUser] =
   deleteModalVisible,
   setDeleteModalVisible,
 ] = useState(false);
+const [logoutModalVisible, setLogoutModalVisible] =
+  useState(false);
 
 const [
   selectedDeleteUser,
@@ -88,9 +86,6 @@ const [
     return () => backHandler.remove();
   }, []);
 
-  useEffect(() => {
-    loadCurrentToken();
-  }, []);
 
   useEffect(() => {
     if (hoodId) {
@@ -157,12 +152,6 @@ const openPicker = (index, type) => {
   setShowPicker(true);
 };
 
-const loadCurrentToken = async () => {
-    const token = await getToken();
-    setCurrentToken(token);
-    setTokenInput(token);
-  };
-
 const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
@@ -205,55 +194,8 @@ const handleUpdateOperatingHours = async () => {
   }
 }
 
-const handleSaveToken = async () => {
-    if (!tokenInput.trim()) {
-      showToast('Please enter a valid token', 'error');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await setToken(tokenInput.trim());
-      setCurrentToken(tokenInput.trim());
-      showToast('Token saved successfully!', 'success');
-    } catch (err) {
-      showToast('Failed to save token', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-const handleResetToken = () => {
-    Alert.alert(
-      'Reset Token',
-      'Are you sure you want to reset to the default token?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await resetToken();
-              await loadCurrentToken();
-              showToast('Token reset to default', 'success');
-            } catch (err) {
-              showToast('Failed to reset token', 'error');
-            }
-          },
-        },
-      ]
-    );
-  };
-
 const showToast = (message, type) => {
     setToast({ visible: true, message, type });
-  };
-
-const maskToken = (token) => {
-    if (!token) return '';
-    if (token.length <= 20) return token;
-    return `${token.substring(0, 20)}...${token.substring(token.length - 10)}`;
   };
 
 const loadHoodItems = async () => {
@@ -526,6 +468,21 @@ const confirmDeleteExpert = async (
   }
 };
 
+const handleLogout = async () => {
+  try {
+    await logout();
+
+    setLogoutModalVisible(false);
+
+    router.replace("/login");
+  } catch (error) {
+    showToast(
+      "Unable to logout",
+      "error",
+    );
+  }
+};
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Toast
@@ -600,60 +557,42 @@ const confirmDeleteExpert = async (
 }}
 />
 
-          {/* Token Management Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="key-outline" size={22} color={THEME.colors.primary} />
-              <Text style={styles.sectionTitle}>API Token</Text>
-            </View>
+      <View style={styles.section}>
 
-            <View style={styles.infoCard}>
-              <Text style={styles.infoLabel}>Current Token</Text>
-              <Text style={styles.infoValue} numberOfLines={2}>
-                {maskToken(currentToken)}
-              </Text>
-            </View>
+  <View style={styles.sectionHeader}>
+    <Ionicons
+      name="person-circle-outline"
+      size={22}
+      color={THEME.colors.primary}
+    />
 
-            <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>Update Token</Text>
-              <Text style={styles.inputDescription}>
-                Paste your new Bearer token below when the current one expires (60 days validity).
-              </Text>
-              <TextInput
-                style={styles.tokenInput}
-                placeholder="Paste your Bearer token here..."
-                placeholderTextColor={THEME.colors.textMuted}
-                value={tokenInput}
-                onChangeText={setTokenInput}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
+    <Text style={styles.sectionTitle}>
+      Session
+    </Text>
+  </View>
 
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.button, styles.resetButton]}
-                  onPress={handleResetToken}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="refresh" size={18} color={THEME.colors.textSecondary} />
-                  <Text style={styles.resetButtonText}>Reset</Text>
-                </TouchableOpacity>
+  <View style={styles.infoCard}>
 
-                <TouchableOpacity
-                  style={[styles.button, styles.saveButton]}
-                  onPress={handleSaveToken}
-                  disabled={loading}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="checkmark" size={18} color="#FFF" />
-                  <Text style={styles.saveButtonText}>
-                    {loading ? 'Saving...' : 'Save Token'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
+    <TouchableOpacity
+      style={styles.logoutButton}
+      onPress={() => setLogoutModalVisible(true)}
+    >
+
+      <Ionicons
+        name="log-out-outline"
+        size={20}
+        color="#FFF"
+      />
+
+      <Text style={styles.logoutText}>
+        Logout
+      </Text>
+
+    </TouchableOpacity>
+
+  </View>
+
+</View>
 
           {/* Notifications Section */}
           <View style={styles.section}>
@@ -949,6 +888,64 @@ const confirmDeleteExpert = async (
     </View>
   </View>
 </Modal>
+<Modal
+  visible={logoutModalVisible}
+  transparent
+  animationType="fade"
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+
+      <Text style={styles.modalTitle}>
+        Logout
+      </Text>
+
+      <Text
+        style={{
+          color: "#666",
+          marginBottom: 20,
+          lineHeight: 22,
+        }}
+      >
+        Are you sure you want to logout from
+        Qwiky Admin?
+      </Text>
+
+      <View style={styles.modalActions}>
+
+        <TouchableOpacity
+          onPress={() =>
+            setLogoutModalVisible(false)
+          }
+        >
+          <Text
+            style={{
+              color: "#666",
+              fontWeight: "600",
+            }}
+          >
+            Cancel
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleLogout}
+        >
+          <Text
+            style={{
+              color: "#DC2626",
+              fontWeight: "700",
+            }}
+          >
+            Logout
+          </Text>
+        </TouchableOpacity>
+
+      </View>
+
+    </View>
+  </View>
+</Modal>
     </SafeAreaView>
   );
 }
@@ -1187,6 +1184,21 @@ modalActions: {
   flexDirection: 'row',
   justifyContent: 'flex-end',
   gap: 12,
+},
+logoutButton: {
+  backgroundColor: '#DC2626',
+  height: 50,
+  borderRadius: 12,
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+logoutText: {
+  color: '#FFF',
+  fontWeight: '700',
+  fontSize: 15,
+  marginLeft: 10,
 },
 });
 

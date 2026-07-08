@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -24,16 +25,20 @@ import ErrorState from '../components/ErrorState';
 import Toast from '../components/Toast';
 import NewBookingBanner from '../components/NewBookingBanner';
 import { 
+  isLoggedIn,
   fetchBookings,  
   fetchHoods,
   getErrorMessage 
-} from '../services/api';import THEME from '../constants/theme';
+} from '../services/api';
+import THEME from '../constants/theme';
 
 const STATUS_FILTERS = ['ALL', 'CONFIRMED', 'IN_PROGRESS', 'SETTLED', 'CANCELLED', 'FAILED', 'PAYMENT_PENDING'];
 const PAGE_SIZE = 100;
 
 export default function Home() {
   const router = useRouter();
+  const [checkingAuth, setCheckingAuth] =
+  useState(true);
   const [bookings, setBookings] = useState<any[]>([]);
   const [filteredBookings, setFilteredBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,13 +115,31 @@ useEffect(() => {
   filterBookings(bookings, searchQuery, activeFilter);
 }, [bookings, searchQuery, activeFilter, activeDateFilter, customStartDate, customEndDate]);
 
+useEffect(() => {
+  const checkAuth = async () => {
+    try {
+      const loggedIn = await isLoggedIn();
+      if (!loggedIn) {
+        router.replace("/login");
+        return;
+      }
+      setCheckingAuth(false);
+    } catch {
+      router.replace("/login");
+    }
+  };
 
-  useEffect(() => {
-   loadHoods();
-  }, []);
+  checkAuth();
+}, []);
+
+useEffect(() => {
+  if (!checkingAuth) {
+    loadHoods();
+  }
+}, [checkingAuth]);
 
 
-  const loadHoods = async () => {
+const loadHoods = async () => {
   try {
     const data = await fetchHoods();
     setHoods(data || []);
@@ -316,7 +339,30 @@ const handleCustomDatePress = () => {
   openPicker('start');
 };
 
+if (checkingAuth) {
+  return (
+    <SafeAreaView
+      style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <ActivityIndicator
+        size="large"
+        color={THEME.colors.primary}
+      />
 
+      <Text
+        style={{
+          marginTop: 12,
+        }}
+      >
+        Checking session...
+      </Text>
+    </SafeAreaView>
+  );
+}
   if (loading && bookings.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
