@@ -13,13 +13,13 @@ const ONESIGNAL_API_KEY = process.env.EXPO_PUBLIC_ONESIGNAL_API_KEY;
 // IMPORTANT: Must stay '/api' for Vercel rewrite to work
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
-  'https://devapi.qwiky.in/qwiky-service/api/v1';
+  'https://api.qwiky.in/qwiky-service/api/v1';
 
 
 // Hardcoded Hood ID (as requested)
 const HOOD_ID =
   process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID ||
-  '6d118a84-f758-4f16-af3a-bf11371f3f49';
+  '4dd4d3a6-c0b3-4042-8e01-5b9299273ee1';
 
 export const getFriendlyError = error => {
   const code = error?.friendlyMessage || "";
