@@ -3,15 +3,59 @@ import { fetchUserDetails } from "../services/api";
 
 const CALENDAR_EMAIL = 'support@qwiky.in';
 
-const formatDateForCalendar = (date: Date) =>
+const formatDateForCalendar = date =>
   date.toISOString().replace(/-|:|\.\d+/g, '');
 
-const formatTime = (date: Date) =>
+const formatTime = date =>
   date.toLocaleTimeString('en-IN', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true
   });
+
+export const formatTime12Hour = value => {
+  if (!value) return 'N/A';
+  const raw = String(value);
+  const date = raw.includes('T') ? new Date(raw) : new Date(`2000-01-01T${raw}`);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date
+    .toLocaleTimeString('en-IN', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      ...(raw.includes('T') ? { timeZone: 'Asia/Kolkata' } : {}),
+    })
+    .replace(/\s/g, ' ');
+};
+
+export const formatIndiaDate = value => {
+  if (!value) return 'N/A';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+export const formatIndiaDateTime = value => {
+  if (!value) return 'N/A';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
 
 export const openCalendarEvent = async ({
   booking,

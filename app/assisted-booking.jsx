@@ -11,6 +11,8 @@ Alert,
 Animated,
 Switch
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import THEME from '../constants/theme';
 import {
@@ -284,6 +286,15 @@ const progressWidth = progressAnim.interpolate({
   outputRange: ['0%', '100%'],
 });
 
+const stepLabels = {
+  1: 'Find customer',
+  2: 'Customer and address',
+  3: 'Service and schedule',
+  5: 'Review booking',
+  6: 'Booking confirmed',
+};
+const displayStep = ({ 1: 1, 2: 2, 3: 3, 5: 4, 6: 5 })[step] || 1;
+
 const goToStep = (nextStep) => {
 
   Animated.timing(progressAnim, {
@@ -297,15 +308,19 @@ const goToStep = (nextStep) => {
 
 return(
 
-<View style={{flex:1,backgroundColor:'#FFF'}}>
-
-<View style={styles.topHeader}>
-<TouchableOpacity onPress={()=>router.replace('/')}>
-<Text style={styles.closeBtn}>✕</Text>
+<SafeAreaView style={styles.screen} edges={['top']}>
+<View style={styles.flowHeader}>
+<TouchableOpacity style={styles.headerIcon} onPress={handleBack}>
+<Ionicons name={step > 1 ? 'arrow-back' : 'close'} size={24} color={THEME.colors.text} />
 </TouchableOpacity>
+<View style={styles.headerCopy}>
+<Text style={styles.headerTitle}>Assisted Booking</Text>
+<Text style={styles.headerSubtitle}>{stepLabels[step]}</Text>
+</View>
+<View style={styles.stepBadge}><Text style={styles.stepBadgeText}>{displayStep}/5</Text></View>
 </View>
 
-<ScrollView ref={scrollRef} style={styles.container}>
+<ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
 
 {/* Progress Bar */}
 
@@ -317,40 +332,31 @@ return(
 
 {/* Back Button */}
 
-{step > 1 && (
-  <TouchableOpacity
-    style={{ marginBottom: 10 }}
-    onPress={handleBack}
-  >
-    <Text style={{ color: THEME.colors.primary }}>
-      ← Back
-    </Text>
-  </TouchableOpacity>
-)}
-
-<Text style={{ marginBottom: 8, color: "#6B7280" }}>
-Step {step} of 6
-</Text>
+<View style={styles.stepIntro}>
+<Text style={styles.stepKicker}>STEP {displayStep} OF 5</Text>
+<Text style={styles.stepTitle}>{stepLabels[step]}</Text>
+</View>
 
 {/* STEP 1 */}
 
 {step===1 &&(
 
 <>
-<Text style={styles.title}>Enter Mobile</Text>
+<Text style={styles.helper}>Enter the customer’s registered mobile number to retrieve their profile and saved addresses.</Text>
 
+<Text style={styles.fieldLabel}>Mobile number</Text>
 <TextInput
 style={styles.input}
 keyboardType="numeric"
-placeholder="Mobile"
+placeholder="10-digit mobile number"
 value={mobile}
-onChangeText={setMobile}
+onChangeText={(value)=>setMobile(value.replace(/\D/g,'').slice(0,10))}
 />
 
 <TouchableOpacity style={styles.primaryBtn} onPress={validateUser}>
 {loading
 ? <ActivityIndicator color="#FFF"/>
-: <Text style={styles.btnText}>Next</Text>}
+: <Text style={styles.btnText}>Continue</Text>}
 </TouchableOpacity>
 
 </>
@@ -690,28 +696,43 @@ New Booking
 )}
 
 </ScrollView>
-</View>
+</SafeAreaView>
 );
 }
 
 const styles = StyleSheet.create({
 
-container:{flex:1,padding:20},
+screen:{flex:1,backgroundColor:THEME.colors.background},
+flowHeader:{height:68,paddingHorizontal:14,backgroundColor:'#FFF',borderBottomWidth:1,borderBottomColor:THEME.colors.border,flexDirection:'row',alignItems:'center'},
+headerIcon:{width:42,height:42,borderRadius:12,alignItems:'center',justifyContent:'center'},
+headerCopy:{flex:1,marginLeft:5},
+headerTitle:{fontSize:19,fontWeight:'800',color:THEME.colors.text},
+headerSubtitle:{marginTop:2,fontSize:11,color:THEME.colors.textSecondary},
+stepBadge:{minWidth:42,paddingHorizontal:9,paddingVertical:7,borderRadius:999,backgroundColor:'#F3E8FF',alignItems:'center'},
+stepBadgeText:{color:THEME.colors.primary,fontSize:11,fontWeight:'800'},
+container:{flex:1},
+content:{padding:20,paddingBottom:45},
+stepIntro:{marginTop:16,marginBottom:12},
+stepKicker:{color:THEME.colors.primary,fontSize:10,fontWeight:'900',letterSpacing:1},
+stepTitle:{marginTop:4,fontSize:23,fontWeight:'900',color:THEME.colors.text},
+helper:{marginBottom:18,color:THEME.colors.textSecondary,lineHeight:20},
+fieldLabel:{marginBottom:7,color:THEME.colors.textSecondary,fontSize:12,fontWeight:'800'},
 
-title:{fontSize:18,fontWeight:'700',marginVertical:12},
+title:{fontSize:18,fontWeight:'800',marginTop:22,marginBottom:12,color:THEME.colors.text},
 
 input:{
 borderWidth:1,
 borderColor:'#E5E7EB',
-borderRadius:12,
-padding:12,
+borderRadius:13,
+padding:14,
 marginBottom:10
 },
 
 primaryBtn:{
 backgroundColor:THEME.colors.primary,
+minHeight:50,
 padding:14,
-borderRadius:12,
+borderRadius:14,
 alignItems:'center',
 marginTop:12,
 position: 'relative',

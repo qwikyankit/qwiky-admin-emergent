@@ -13,13 +13,13 @@ const ONESIGNAL_API_KEY = process.env.EXPO_PUBLIC_ONESIGNAL_API_KEY;
 // IMPORTANT: Must stay '/api' for Vercel rewrite to work
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
-  'https://api.qwiky.in/qwiky-service/api/v1';
+  'https://devapi.qwiky.in/qwiky-service/api/v1';
 
 
 // Hardcoded Hood ID (as requested)
 const HOOD_ID =
   process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID ||
-  '4dd4d3a6-c0b3-4042-8e01-5b9299273ee1';
+  '6d118a84-f758-4f16-af3a-bf11371f3f49';
 
 export const getFriendlyError = error => {
   const code = error?.friendlyMessage || "";
@@ -85,9 +85,18 @@ apiClient.interceptors.response.use(
     if (error.response) {
       const data = error.response.data;
 
+      error.apiCode = data?.code;
+      error.apiStatus = error.response.status;
+
       errorMessage =
         data?.detail ||
         data?.message ||
+        data?.error?.message ||
+        data?.error ||
+        data?.title ||
+        (Array.isArray(data?.errors)
+          ? data.errors.map(item => item?.message || item).join(', ')
+          : null) ||
         `Error: ${error.response.status}`;
     }
 
@@ -124,9 +133,109 @@ export interface PaginatedResponse {
   };
 }
 
+export type BookingStatus =
+  | 'DRAFT'
+  | 'PENDING'
+  | 'PAYMENT_PENDING'
+  | 'CONFIRMED'
+  | 'IN_PROGRESS'
+  | 'SETTLED'
+  | 'CANCELLED'
+  | 'FAILED';
+
+export interface BookingLifecycleResponse {
+  bookingId: string;
+  bookingCode: string;
+  status: BookingStatus;
+  grandTotal: number;
+  paymentRequired: boolean;
+}
+
 // Fetch all hoods
-export const fetchHoods = async () => {
-  const response = await apiClient.get('/hoods');
+export const fetchHoods = async (options: { includeInactive?: boolean } = {}) => {
+  const response = await apiClient.get('/hoods', {
+    params: options.includeInactive ? { includeInactive: true } : undefined,
+  });
+  return response.data;
+};
+
+export const createHood = async payload => {
+  const response = await apiClient.post('/hoods', payload);
+  return response.data;
+};
+
+export const updateHood = async (hoodId, payload) => {
+  const response = await apiClient.put(`/hoods/${hoodId}`, payload);
+  return response.data;
+};
+
+export const createAdminUser = async payload => {
+  const response = await apiClient.post('/admin', payload);
+  return response.data;
+};
+
+export const fetchCategories = async () => {
+  const response = await apiClient.get('/categories');
+  return response.data;
+};
+
+export const fetchSubcategories = async () => {
+  const response = await apiClient.get('/subcategories');
+  return response.data;
+};
+
+export const createCategory = async payload => {
+  const response = await apiClient.post('/categories', payload);
+  return response.data;
+};
+
+export const updateCategory = async (categoryId, payload) => {
+  const response = await apiClient.put(`/categories/${categoryId}`, payload);
+  return response.data;
+};
+
+export const createSubcategory = async payload => {
+  const response = await apiClient.post('/subcategories/', payload);
+  return response.data;
+};
+
+export const fetchProducts = async () => {
+  const response = await apiClient.get('/products');
+  return response.data;
+};
+
+export const createProduct = async payload => {
+  const response = await apiClient.post('/products', payload);
+  return response.data;
+};
+
+export const updateProduct = async (productId, payload) => {
+  const response = await apiClient.put(`/products/${productId}`, payload);
+  return response.data;
+};
+
+export const deleteProduct = async productId => {
+  const response = await apiClient.delete(`/products/${productId}`);
+  return response.data;
+};
+
+export const fetchItems = async () => {
+  const response = await apiClient.get('/items');
+  return response.data;
+};
+
+export const createItem = async payload => {
+  const response = await apiClient.post('/items', payload);
+  return response.data;
+};
+
+export const updateItem = async (itemId, payload) => {
+  const response = await apiClient.put(`/items/${itemId}`, payload);
+  return response.data;
+};
+
+export const deleteItem = async itemId => {
+  const response = await apiClient.delete(`/items/${itemId}`);
   return response.data;
 };
 
@@ -151,19 +260,17 @@ export const fetchUserDetails = async (userId: string) => {
   return response.data;
 };
 
-export const cancelBooking = async (bookingId: string) => {
-  const response = await apiClient.post(
-    `/admin/booking/${bookingId}/cancel`,
-    {}   // 🔥 mandatory empty body
-  );
+export const cancelBooking = async (
+  bookingId: string,
+): Promise<BookingLifecycleResponse> => {
+  const response = await apiClient.post(`/admin/booking/${bookingId}/cancel`);
   return response.data;
 };
 
-export const settleBooking = async (bookingId: string) => {
-  const response = await apiClient.post(
-    `/admin/booking/${bookingId}/settled`,
-    {}   // 🔥 mandatory empty body
-  );
+export const settleBooking = async (
+  bookingId: string,
+): Promise<BookingLifecycleResponse> => {
+  const response = await apiClient.post(`/admin/booking/${bookingId}/settled`);
   return response.data;
 };
 
@@ -211,6 +318,11 @@ export const fetchHoodItems = async (hoodId) => {
     `/hood-items/hood/${hoodId}`
   );
   return res.data;
+};
+
+export const createHoodItem = async payload => {
+  const response = await apiClient.post('/hood-items', payload);
+  return response.data;
 };
 
 // 3️⃣ Fetch Slots
@@ -317,6 +429,21 @@ export const createHoodUser = async (
 ) => {
   const res = await apiClient.post(
     '/hood-users',
+    payload,
+  );
+
+  return res.data;
+};
+
+// Create and update use the same complete hood-user contract. Sending the
+// complete payload is important because expertise and shifts belong to the
+// hood assignment, not the global user.
+export const updateHoodUser = async (
+  payload,
+) => {
+  const { hoodId, userId } = payload;
+  const res = await apiClient.put(
+    `/hood-users/${hoodId}/user/${userId}`,
     payload,
   );
 

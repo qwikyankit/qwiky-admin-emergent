@@ -1,487 +1,127 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
   Platform,
-  BackHandler,
-  Modal,
-  } from 'react-native';
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import Toast from '../components/Toast';
 import THEME from '../constants/theme';
-import OperatingHoursSection from '../components/OperatingHoursSection';
-import HoodItemsSection from '../components/HoodItemsSection';
-import HoodExpertsSection from '../components/HoodExpertsSection';
+import { formatTime12Hour } from '../utils/helpers';
 import {
-  logout,
-  getToken,
   fetchHoodDetails,
-  updateHoodOperatingHours,
-  fetchHoodItems,
-  updateHoodItem,
   fetchHoodExperts,
-  fetchHoods,
-  createHoodUser,
-  deleteHoodUser,
-  updateHoodUserStatus,
+  fetchHoodItems,
   getErrorMessage,
+  updateHoodOperatingHours,
 } from '../services/api';
+
+const SECTIONS = [
+  {
+    route: '/hood-items',
+    icon: 'pricetags-outline',
+    title: 'Hood Items',
+    description: 'Manage availability and pricing. Item creation can live here next.',
+    accent: '#FFF7E6',
+  },
+  {
+    route: '/experts',
+    icon: 'people-outline',
+    title: 'Experts',
+    description: 'Add experts, update shifts and expertise, or transfer them.',
+    accent: '#F3E8FF',
+  },
+];
+
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function Settings() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const params = useLocalSearchParams();
+  const hoodId = Array.isArray(params.hoodId) ? params.hoodId[0] : params.hoodId;
+  const hoodName = Array.isArray(params.hoodName) ? params.hoodName[0] : params.hoodName;
+  const [todayHours, setTodayHours] = useState(null);
+  const [sectionStats, setSectionStats] = useState<any>(null);
+  const [updatingHours, setUpdatingHours] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
-  const [operatingHours, setOperatingHours] = useState([]);
-  const [showPicker, setShowPicker] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(null);
-  const [timeType, setTimeType] = useState(null); // 'open' | 'close'
-  const [hoodItems, setHoodItems] = useState([]);
-  const [loadingItems, setLoadingItems] = useState(false);
-  const [priceModalVisible, setPriceModalVisible] =
-  useState(false);
-  const [selectedItem, setSelectedItem] =
-  useState(null);
-  const [newOfferPrice, setNewOfferPrice] =
-  useState('');
-  const [hoodUsers, setHoodUsers] =
-  useState([]);
-  const [allHoods, setAllHoods] =
-  useState([]);
-  const [
-  selectedTargetHoods,
-  setSelectedTargetHoods,
-] = useState({});
-const [hoodModalVisible, setHoodModalVisible] =
-  useState(false);
-
-const [selectedUser, setSelectedUser] =
-  useState(null);
-  const [
-  deleteModalVisible,
-  setDeleteModalVisible,
-] = useState(false);
-const [logoutModalVisible, setLogoutModalVisible] =
-  useState(false);
-
-const [
-  selectedDeleteUser,
-  setSelectedDeleteUser,
-] = useState(null);
-  const { hoodId, hoodName } = useLocalSearchParams();
-
-  // Handle Android back button
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      handleBack();
-      return true;
-    });
-    return () => backHandler.remove();
+  const todayDayOfWeek = useMemo(() => {
+    const day = new Date().getDay();
+    return day === 0 ? 7 : day;
   }, []);
 
-
   useEffect(() => {
-    if (hoodId) {
-      loadHoodOperatingHours();
-      loadHoodItems();
-      loadHoodUsers();
-      loadAllHoods();
-    }
-  }, [hoodId]);
-
-  const loadHoodUsers = async () => {
-  try {
-    const data =
-      await fetchHoodExperts(
-        hoodId,
+    if (!hoodId) return;
+    Promise.all([
+      fetchHoodDetails(hoodId),
+      fetchHoodExperts(hoodId),
+      fetchHoodItems(hoodId),
+    ])
+      .then(([hood, experts, items]) => {
+        const day = hood?.hoodOperatingHours?.find(
+          item => item.dayOfWeek === todayDayOfWeek,
+        );
+        setTodayHours(day || null);
+        const expertList = experts || [];
+        const itemList = items || [];
+        const activeExperts = expertList.filter(
+          expert => String(expert.status || '').toUpperCase() === 'ACTIVE',
+        ).length;
+        const categoryIds = new Set(
+          expertList.flatMap(expert =>
+            (expert.expertises || expert.expertiseList || expert.hoodUserExpertises || [])
+              .map(expertise => expertise.categoryId)
+              .filter(Boolean),
+          ),
+        );
+        setSectionStats({
+          experts: {
+            total: expertList.length,
+            active: activeExperts,
+            inactive: expertList.length - activeExperts,
+            categories: categoryIds.size,
+          },
+          items: {
+            total: itemList.length,
+            available: itemList.filter(item => Boolean(item.isAvailable)).length,
+            unavailable: itemList.filter(item => !item.isAvailable).length,
+          },
+        });
+      })
+      .catch(error =>
+        setToast({ visible: true, message: getErrorMessage(error), type: 'error' }),
       );
+  }, [hoodId, todayDayOfWeek]);
 
-    setHoodUsers(
-      data || [],
-    );
-  } catch {
-    showToast(
-      'Failed to load experts',
-      'error',
-    );
-  }
-};
-
-const loadAllHoods = async () => {
-  try {
-    const data =
-      await fetchHoods();
-
-    setAllHoods(
-      data || [],
-    );
-  } catch {
-    showToast(
-      'Failed to load hoods',
-      'error',
-    );
-  }
-};
-
-
-const timeStringToDate = (timeStr) => {
-  const [hours, minutes] = timeStr.split(':');
-  const date = new Date();
-  date.setHours(parseInt(hours));
-  date.setMinutes(parseInt(minutes));
-  date.setSeconds(0);
-  return date;
-};
-
-const dateToTimeString = (date) => {
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}:00`;
-};
-
-const openPicker = (index, type) => {
-  setSelectedIndex(index);
-  setTimeType(type);
-  setShowPicker(true);
-};
-
-const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/');
-    }
+  const handleBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
   };
 
-const loadHoodOperatingHours = async () => {
-  try {
-    const hood = await fetchHoodDetails(hoodId);
-    if (hood?.hoodOperatingHours) {
-      // Sort by dayOfWeek (1 = Monday)
-      const sortedHours = hood.hoodOperatingHours
-        .map(h => ({
-          dayOfWeek: h.dayOfWeek,
-          isClosed: h.isClosed,
-          openTime: h.openTime,
-          closeTime: h.closeTime
-        }))
-        .sort((a, b) => a.dayOfWeek - b.dayOfWeek);
-
-      setOperatingHours(sortedHours);
+  const toggleTodayHours = async () => {
+    if (!todayHours || updatingHours) return;
+    const previous = todayHours;
+    const updated = { ...previous, isClosed: !previous.isClosed };
+    setTodayHours(updated);
+    try {
+      setUpdatingHours(true);
+      await updateHoodOperatingHours([updated], hoodId);
+      setToast({
+        visible: true,
+        message: updated.isClosed ? 'Today marked closed' : 'Today marked open',
+        type: 'success',
+      });
+    } catch (error) {
+      setTodayHours(previous);
+      setToast({ visible: true, message: getErrorMessage(error), type: 'error' });
+    } finally {
+      setUpdatingHours(false);
     }
-
-  } catch (err) {
-    showToast('Failed to load operating hours', 'error');
-  }
-};
-
-const handleUpdateOperatingHours = async () => {
-  try {
-    setLoading(true);
-    await updateHoodOperatingHours(operatingHours, hoodId);
-    showToast('Operating hours updated successfully!', 'success');
-  } catch (err) {
-    showToast('Failed to update operating hours', 'error');
-  } finally {
-    setLoading(false);
-  }
-}
-
-const showToast = (message, type) => {
-    setToast({ visible: true, message, type });
   };
-
-const loadHoodItems = async () => {
-  try {
-    setLoadingItems(true);
-    const data =
-      await fetchHoodItems(
-        hoodId,
-      );
-  setHoodItems([...(data || [])].sort(
-    (a, b) =>
-      (a.sequenceNumber || 999) -
-      (b.sequenceNumber || 999)
-  ));
-
-  } catch (err) {
-    showToast(
-      'Failed to load hood items',
-      'error',
-    );
-  } finally {
-    setLoadingItems(false);
-  }
-};
-
-const handleToggleAvailability = async (item) => {
-  try {
-    await updateHoodItem(
-      item.id,
-      {
-        hoodId: item.hoodId,
-        itemId: item.itemId,
-        isAvailable: !item.isAvailable,
-        offerPrice:
-          item.offerPrice ??
-          item.itemDefaultPrice,
-      },
-    );
-    await loadHoodItems();
-  } catch (err) {
-    console.error('toggle failed', err);
-  }
-};
-
-const openPriceModal = (
-  item,
-) => {
-  setSelectedItem(item);
- setNewOfferPrice(
-    item.offerPrice ??
-    item.itemDefaultPrice ??
-    '',
-);
-  setPriceModalVisible(true);
-};
-
-const confirmPriceUpdate = async () => {
-  try {
-    if (!selectedItem?.id) {
-      showToast(
-        'Invalid service selected',
-        'error',
-      );
-      return;
-    }
-
-    const price = Number(newOfferPrice);
-
-    await updateHoodItem(
-      selectedItem.id,
-      {
-        hoodId: selectedItem.hoodId,
-        itemId: selectedItem.itemId,
-        isAvailable:
-          selectedItem.isAvailable,
-        offerPrice: price,
-      },
-    );
-
-    showToast(
-      'Price updated successfully',
-      'success',
-    );
-
-    closePriceModal();
-
-    await loadHoodItems();
-  } catch (err) {
-    console.error(
-      'Price update failed:',
-      err,
-    );
-
-    showToast(
-      'Failed to update price',
-      'error',
-    );
-  }
-};
-
-const closePriceModal = () => {
-  setPriceModalVisible(false);
-  setSelectedItem(null);
-  setNewOfferPrice('');
-};
-
-const handleToggleOperatingDay = async (index) => {
-  const previousDay = operatingHours[index];
-
-  const updatedDay = {
-    ...previousDay,
-    isClosed: !previousDay.isClosed,
-  };
-
-  const updatedHours = [...operatingHours];
-  updatedHours[index] = updatedDay;
-
-  // Optimistic update
-  setOperatingHours(updatedHours);
-
-  try {
-    setLoading(true);
-
-    await updateHoodOperatingHours(
-      [updatedDay],
-      hoodId,
-    );
-
-    showToast(
-      updatedDay.isClosed
-        ? 'Day closed successfully'
-        : 'Day opened successfully',
-      'success',
-    );
-  } catch (err) {
-    // rollback
-    const reverted = [...operatingHours];
-    reverted[index] = previousDay;
-
-    setOperatingHours(reverted);
-
-    showToast(
-      'Failed to update operating hours',
-      'error',
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-const handleToggleExpertStatus = async (
-  user,
-) => {
-  try {
-    setLoading(true);
-
-    const nextStatus =
-      user.status === 'ACTIVE'
-        ? 'INACTIVE'
-        : 'ACTIVE';
-
-    await updateHoodUserStatus(
-      user.hoodId,
-      user.userId,
-      nextStatus,
-    );
-
-    await loadHoodUsers();
-
-    showToast(
-      `Expert ${nextStatus.toLowerCase()} successfully`,
-      'success',
-    );
-  } catch (error) {
-    showToast(
-      getErrorMessage(error),
-      'error',
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-const handleTransferExpert = async (
-  user,
-) => {
-  try {
-    const targetHoodId =
-      selectedTargetHoods[
-        user.userId
-      ];
-
-    if (!targetHoodId) {
-      showToast(
-        'Please select target hood',
-        'error',
-      );
-      return;
-    }
-
-    setLoading(true);
-
-    await deleteHoodUser(
-      user.hoodId,
-      user.userId,
-    );
-
-    await createHoodUser({
-      hoodId: targetHoodId,
-      userId: user.userId,
-      role: user.role,
-      status: user.status,
-    });
-
-    setSelectedTargetHoods(prev => {
-  const updated = { ...prev };
-  delete updated[user.userId];
-  return updated;
-});
-
-    showToast(
-      'Expert transferred successfully',
-      'success',
-    );
-
-    await Promise.all([
-  loadHoodUsers(),
-  loadAllHoods(),
-]);
-  } catch (error) {
-    showToast(
-      getErrorMessage(error),
-      'error',
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-const confirmDeleteExpert = async (
-  user,
-) => {
-   console.log(
-    'Deleting...',
-    user.hoodId,
-    user.userId,
-  );
-  try {
-    setLoading(true);
-
-    await deleteHoodUser(
-      user.hoodId,
-      user.userId,
-    );
-
-    await loadHoodUsers();
-
-    showToast(
-      'Expert removed successfully',
-      'success',
-    );
-  } catch (error) {
-    showToast(
-      getErrorMessage(error),
-      'error',
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-const handleLogout = async () => {
-  try {
-    await logout();
-
-    setLogoutModalVisible(false);
-
-    router.replace("/login");
-  } catch (error) {
-    showToast(
-      "Unable to logout",
-      "error",
-    );
-  }
-};
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -489,716 +129,139 @@ const handleLogout = async () => {
         visible={toast.visible}
         message={toast.message}
         type={toast.type}
-        onHide={() => setToast({ ...toast, visible: false })}
+        onHide={() => setToast(current => ({ ...current, visible: false }))}
       />
-
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBack}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color={THEME.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-    {hoodName ? `${hoodName} Settings` : 'Settings'}
-  </Text>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerTitle}>Hood Settings</Text>
+          <Text style={styles.headerSubtitle}>{hoodName || 'Selected hood'}</Text>
+        </View>
         <View style={styles.placeholder} />
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.content}
-      >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Operating Hours Section */}
-      <OperatingHoursSection
-  operatingHours={operatingHours}
-  setOperatingHours={setOperatingHours}
-  loading={loading}
-  handleUpdateOperatingHours={handleUpdateOperatingHours}
-  handleToggleOperatingDay={
-    handleToggleOperatingDay
-  }
-  openPicker={openPicker}
-/>
-
-<HoodItemsSection
-  hoodItems={hoodItems}
-  handleToggleAvailability={
-    handleToggleAvailability
-  }
-  openPriceModal={openPriceModal}
-/>
-
-
-<HoodExpertsSection
-  hoodUsers={hoodUsers}
-  allHoods={allHoods}
-  selectedTargetHoods={selectedTargetHoods}
-  handleTransferExpert={
-    handleTransferExpert
-  }
-  handleToggleExpertStatus={
-    handleToggleExpertStatus
-  }
-  setSelectedUser={setSelectedUser}
-  setHoodModalVisible={
-    setHoodModalVisible
-  }
-  handleDeleteExpert={(user) => {
-  setSelectedDeleteUser(user);
-  setDeleteModalVisible(true);
-}}
-/>
-
-      <View style={styles.section}>
-
-  <View style={styles.sectionHeader}>
-    <Ionicons
-      name="person-circle-outline"
-      size={22}
-      color={THEME.colors.primary}
-    />
-
-    <Text style={styles.sectionTitle}>
-      Session
-    </Text>
-  </View>
-
-  <View style={styles.infoCard}>
-
-    <TouchableOpacity
-      style={styles.logoutButton}
-      onPress={() => setLogoutModalVisible(true)}
-    >
-
-      <Ionicons
-        name="log-out-outline"
-        size={20}
-        color="#FFF"
-      />
-
-      <Text style={styles.logoutText}>
-        Logout
-      </Text>
-
-    </TouchableOpacity>
-
-  </View>
-
-</View>
-
-          {/* Notifications Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="notifications-outline" size={22} color={THEME.colors.primary} />
-              <Text style={styles.sectionTitle}>Notifications</Text>
-            </View>
-
-            <View style={styles.infoCard}>
-              <View style={styles.notificationRow}>
-                <View style={styles.notificationInfo}>
-                  <Text style={styles.notificationTitle}>New Booking Alerts</Text>
-                  <Text style={styles.notificationDesc}>App checks for new bookings every 30 seconds</Text>
-                </View>
-                <View style={styles.enabledBadge}>
-                  <Ionicons name="checkmark-circle" size={16} color={THEME.colors.settled} />
-                  <Text style={styles.enabledText}>Active</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* App Info Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="information-circle-outline" size={22} color={THEME.colors.primary} />
-              <Text style={styles.sectionTitle}>About</Text>
-            </View>
-
-            <View style={styles.infoCard}>
-              <View style={styles.aboutRow}>
-                <Text style={styles.aboutLabel}>App Name</Text>
-                <Text style={styles.aboutValue}>Qwiky Admin</Text>
-              </View>
-              <View style={styles.aboutRow}>
-                <Text style={styles.aboutLabel}>Version</Text>
-                <Text style={styles.aboutValue}>1.0.0</Text>
-              </View>
-              <View style={styles.aboutRow}>
-                <Text style={styles.aboutLabel}>Platform</Text>
-                <Text style={styles.aboutValue}>{Platform.OS === 'ios' ? 'iOS' : 'Android'}</Text>
-              </View>
-              <View style={[styles.aboutRow, { borderBottomWidth: 0 }]}>
-                <Text style={styles.aboutLabel}>Purpose</Text>
-                <Text style={styles.aboutValue}>Internal Booking Management</Text>
-              </View>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-      {showPicker && Platform.OS !== 'web' && selectedIndex !== null && (
-  <DateTimePicker
-    value={timeStringToDate(
-      timeType === 'open'
-        ? operatingHours[selectedIndex].openTime
-        : operatingHours[selectedIndex].closeTime
-    )}
-    mode="time"
-    is24Hour={true}
-    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-    onChange={(event, selectedDate) => {
-      if (Platform.OS === 'android') {
-        setShowPicker(false);
-      }
-
-      if (selectedDate) {
-        const updated = [...operatingHours];
-        const formatted = dateToTimeString(selectedDate);
-
-        if (timeType === 'open') {
-          updated[selectedIndex].openTime = formatted;
-        } else {
-          updated[selectedIndex].closeTime = formatted;
-        }
-
-        setOperatingHours(updated);
-      }
-    }}
-  />
-)}
-<Modal
-  visible={hoodModalVisible}
-  transparent
-  animationType="slide"
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
-
-      <Text style={styles.modalTitle}>
-        Select Target Hood
-      </Text>
-
-      <ScrollView
-        style={{ maxHeight: 300 }}
-      >
-        {allHoods
-          .filter(
-            hood =>
-              hood.id !== selectedUser?.hoodId
-          )
-          .map((hood) => (
-            <TouchableOpacity
-              key={hood.id}
-              style={{
-                paddingVertical: 14,
-                borderBottomWidth: 1,
-                borderBottomColor: '#EEE',
-              }}
-              onPress={() => {
-                setSelectedTargetHoods({
-                  ...selectedTargetHoods,
-                  [selectedUser.userId]:
-                    hood.id,
-                });
-
-                setHoodModalVisible(
-                  false,
-                );
-              }}
-            >
-              <Text>
-                {hood.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-      </ScrollView>
-
-      <TouchableOpacity
-        onPress={() =>
-          setHoodModalVisible(false)
-        }
-        style={{
-          marginTop: 16,
-          alignItems: 'center',
-        }}
-      >
-        <Text>Close</Text>
-      </TouchableOpacity>
-
-    </View>
-  </View>
-</Modal>
-<Modal
-  visible={priceModalVisible}
-  transparent
-  animationType="slide"
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
-
-      <Text style={styles.modalTitle}>
-        Update Offer Price
-      </Text>
-
-    <Text style={{ fontSize: 16, fontWeight: '600' }}>
-  {selectedItem?.productName}
-</Text>
-
-<Text
-  style={{
-    marginTop: 8,
-    color: '#666',
-  }}
->
-  Current Price:
-  ₹{
-    selectedItem?.offerPrice ??
-    selectedItem?.itemDefaultPrice
-  }
-</Text>
-
-<Text
-  style={{
-    color: '#999',
-    marginBottom: 16,
-  }}
->
-
-  ₹{selectedItem?.itemDefaultPrice}
-</Text>
-
-      <TextInput
-        keyboardType="numeric"
-        value={newOfferPrice}
-        onChangeText={setNewOfferPrice}
-        style={styles.priceInput}
-      />
-
-      <View style={styles.modalActions}>
-     <TouchableOpacity
-  style={{
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-  }}
-    onPress={closePriceModal}
->
-  <Text
-    style={{
-      color: '#666',
-      fontWeight: '600',
-    }}
-  >
-    Cancel
-  </Text>
-</TouchableOpacity>
-
-<TouchableOpacity
-  style={{
-    backgroundColor: THEME.colors.primary,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-  }}
-  onPress={confirmPriceUpdate}
->
-  <Text
-    style={{
-      color: '#FFF',
-      fontWeight: '700',
-    }}
-  >
-    Update
-  </Text>
-</TouchableOpacity>
-      </View>
-
-    </View>
-  </View>
-</Modal>
-<Modal
-  visible={deleteModalVisible}
-  transparent
-  animationType="fade"
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
-      <Text style={styles.modalTitle}>
-        Delete Expert
-      </Text>
-
-      <Text
-        style={{
-          color: '#666',
-          marginBottom: 20,
-          lineHeight: 22,
-        }}
-      >
-        Are you sure you want to remove{' '}
-        <Text style={{ fontWeight: '700' }}>
-          {selectedDeleteUser?.userName}
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.intro}>
+          Choose a section to manage. Each area has its own page so additional create and edit tools can be added cleanly.
         </Text>
-        {' '}from this hood?
-      </Text>
 
-      <View style={styles.modalActions}>
-        <TouchableOpacity
-          onPress={() => {
-            setDeleteModalVisible(false);
-            setSelectedDeleteUser(null);
-          }}
-        >
-          <Text
-            style={{
-              color: '#666',
-              fontWeight: '600',
-            }}
+        <View style={styles.sectionCard}>
+          <View style={[styles.sectionIcon, { backgroundColor: '#EAF2FF' }]}>
+            <Ionicons name="time-outline" size={24} color={THEME.colors.primary} />
+          </View>
+          <TouchableOpacity
+            style={styles.sectionCopy}
+            onPress={() =>
+              router.push({
+                pathname: '/operating-hours',
+                params: { hoodId, hoodName },
+              })
+            }
           >
-            Cancel
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={async () => {
-            setDeleteModalVisible(false);
-
-            await confirmDeleteExpert(
-              selectedDeleteUser,
-            );
-
-            setSelectedDeleteUser(null);
-          }}
-        >
-          <Text
-            style={{
-              color: '#DC2626',
-              fontWeight: '700',
-            }}
+            <Text style={styles.sectionTitle}>Hood Operating Hours</Text>
+            <Text style={styles.operatingDay}>
+              {DAYS[new Date().getDay()]} ·{' '}
+              {todayHours?.isClosed
+                ? 'Closed'
+                : todayHours
+                  ? `${formatTime12Hour(todayHours.openTime)} – ${formatTime12Hour(todayHours.closeTime)}`
+                  : 'Schedule unavailable'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="switch"
+            accessibilityState={{ checked: Boolean(todayHours && !todayHours.isClosed) }}
+            disabled={!todayHours || updatingHours}
+            onPress={toggleTodayHours}
+            style={[
+              styles.switchTrack,
+              todayHours && !todayHours.isClosed ? styles.openTrack : styles.closedTrack,
+            ]}
           >
-            Delete
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
-<Modal
-  visible={logoutModalVisible}
-  transparent
-  animationType="fade"
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
-
-      <Text style={styles.modalTitle}>
-        Logout
-      </Text>
-
-      <Text
-        style={{
-          color: "#666",
-          marginBottom: 20,
-          lineHeight: 22,
-        }}
-      >
-        Are you sure you want to logout from
-        Qwiky Admin?
-      </Text>
-
-      <View style={styles.modalActions}>
-
-        <TouchableOpacity
-          onPress={() =>
-            setLogoutModalVisible(false)
-          }
-        >
-          <Text
-            style={{
-              color: "#666",
-              fontWeight: "600",
-            }}
+            <View
+              style={[
+                styles.switchThumb,
+                todayHours && !todayHours.isClosed ? styles.thumbRight : styles.thumbLeft,
+              ]}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() =>
+              router.push({
+                pathname: '/operating-hours',
+                params: { hoodId, hoodName },
+              })
+            }
+            style={styles.chevronButton}
           >
-            Cancel
-          </Text>
-        </TouchableOpacity>
+            <Ionicons name="chevron-forward" size={22} color={THEME.colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
 
-        <TouchableOpacity
-          onPress={handleLogout}
-        >
-          <Text
-            style={{
-              color: "#DC2626",
-              fontWeight: "700",
-            }}
+        {SECTIONS.map(section => (
+          <TouchableOpacity
+            key={section.route}
+            activeOpacity={0.8}
+            style={styles.sectionCard}
+            onPress={() =>
+              router.push({
+                pathname: section.route,
+                params: { hoodId, hoodName },
+              })
+            }
           >
-            Logout
-          </Text>
-        </TouchableOpacity>
+            <View style={[styles.sectionIcon, { backgroundColor: section.accent }]}>
+              <Ionicons name={section.icon} size={24} color={THEME.colors.primary} />
+            </View>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              {section.route === '/experts' && sectionStats?.experts ? (
+                <Text style={styles.sectionStats}>
+                  {sectionStats.experts.total} total · {sectionStats.experts.active} active ·{' '}
+                  {sectionStats.experts.inactive} inactive · {sectionStats.experts.categories} categories
+                </Text>
+              ) : section.route === '/hood-items' && sectionStats?.items ? (
+                <Text style={styles.sectionStats}>
+                  {sectionStats.items.total} total · {sectionStats.items.available} available ·{' '}
+                  {sectionStats.items.unavailable} unavailable
+                </Text>
+              ) : (
+                <Text style={styles.sectionDescription}>{section.description}</Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={THEME.colors.textSecondary} />
+          </TouchableOpacity>
+        ))}
 
-      </View>
-
-    </View>
-  </View>
-</Modal>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: THEME.colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: THEME.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.border,
-  },
-  backButton: {
-    padding: 8,
-    marginLeft: -8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: THEME.colors.text,
-  },
-  placeholder: {
-    width: 40,
-  },
-  content: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: THEME.colors.text,
-    marginLeft: 10,
-  },
-  infoCard: {
-    backgroundColor: THEME.colors.surface,
-    borderRadius: THEME.borderRadius.lg,
-    padding: 16,
-    marginBottom: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  infoLabel: {
-    fontSize: 13,
-    color: THEME.colors.textMuted,
-    marginBottom: 8,
-  },
-  infoValue: {
-    fontSize: 13,
-    color: THEME.colors.text,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  inputCard: {
-    backgroundColor: THEME.colors.surface,
-    borderRadius: THEME.borderRadius.lg,
-    padding: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  inputLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: THEME.colors.text,
-    marginBottom: 4,
-  },
-  inputDescription: {
-    fontSize: 13,
-    color: THEME.colors.textMuted,
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  tokenInput: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 13,
-    color: THEME.colors.text,
-    minHeight: 100,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-  button: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  resetButton: {
-    backgroundColor: '#F5F5F5',
-  },
-  resetButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: THEME.colors.textSecondary,
-  },
-  saveButton: {
-    backgroundColor: THEME.colors.primary,
-  },
-  saveButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  notificationRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  notificationInfo: {
-    flex: 1,
-  },
-  notificationTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: THEME.colors.text,
-    marginBottom: 4,
-  },
-  notificationDesc: {
-    fontSize: 13,
-    color: THEME.colors.textMuted,
-  },
-  enabledBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: THEME.colors.settledBg,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 4,
-  },
-  enabledText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: THEME.colors.settled,
-  },
-  aboutRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.divider,
-  },
-  aboutLabel: {
-    fontSize: 14,
-    color: THEME.colors.textSecondary,
-  },
-  aboutValue: {
-    fontSize: 14,
-    color: THEME.colors.text,
-    fontWeight: '500',
-  },
-
- 
-
-
-
-modalOverlay: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.5)',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-
-modalContent: {
-  width: '90%',
-  maxWidth: 420,
-  backgroundColor: '#FFF',
-  borderRadius: 20,
-  padding: 24,
-},
-
-modalTitle: {
-  fontSize: 20,
-  fontWeight: '700',
-  marginBottom: 16,
-  color: THEME.colors.text,
-},
-
-priceInput: {
-  borderWidth: 1,
-  borderColor: '#DDD',
-  borderRadius: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 12,
-  marginTop: 16,
-  marginBottom: 20,
-  fontSize: 18,
-},
-
-modalActions: {
-  flexDirection: 'row',
-  justifyContent: 'flex-end',
-  gap: 12,
-},
-logoutButton: {
-  backgroundColor: '#DC2626',
-  height: 50,
-  borderRadius: 12,
-  flexDirection: 'row',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-
-logoutText: {
-  color: '#FFF',
-  fontWeight: '700',
-  fontSize: 15,
-  marginLeft: 10,
-},
+  container: { flex: 1, backgroundColor: THEME.colors.background },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: THEME.colors.border },
+  backButton: { padding: 8 },
+  headerCopy: { flex: 1, alignItems: 'center' },
+  headerTitle: { fontSize: 19, fontWeight: '800', color: THEME.colors.text },
+  headerSubtitle: { marginTop: 2, fontSize: 12, color: THEME.colors.textSecondary },
+  placeholder: { width: 40 },
+  content: { padding: 16, paddingBottom: 40 },
+  intro: { marginBottom: 18, color: THEME.colors.textSecondary, lineHeight: 21 },
+  sectionCard: { minHeight: 92, marginBottom: 12, padding: 15, borderRadius: 17, backgroundColor: '#FFF', borderWidth: 1, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', ...Platform.select({ ios: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }, android: { elevation: 1 } }) },
+  sectionIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  sectionCopy: { flex: 1, marginHorizontal: 13 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: THEME.colors.text },
+  sectionDescription: { marginTop: 4, color: THEME.colors.textSecondary, fontSize: 12, lineHeight: 17 },
+  sectionStats: { marginTop: 6, color: THEME.colors.primary, fontSize: 10, fontWeight: '700', lineHeight: 15 },
+  operatingDay: { marginTop: 5, color: THEME.colors.primary, fontSize: 12, fontWeight: '700' },
+  switchTrack: { width: 46, height: 26, padding: 3, borderRadius: 13, justifyContent: 'center' },
+  openTrack: { backgroundColor: '#22C55E' },
+  closedTrack: { backgroundColor: '#D1D5DB' },
+  switchThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF', elevation: 2 },
+  thumbLeft: { alignSelf: 'flex-start' },
+  thumbRight: { alignSelf: 'flex-end' },
+  chevronButton: { padding: 7, marginLeft: 3 },
 });
-

@@ -13,13 +13,132 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import StatusBadge from '../../components/StatusBadge';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import Toast from '../../components/Toast';
-import { fetchUserDetails, cancelBooking, settleBooking, getErrorMessage, fetchHoodExperts, assignExpert } from '../../services/api';
-import { createCalendarEvent, getRemainingTime, getServiceEndTime } from '../../utils/helpers';
+import { fetchUserDetails, fetchBookings, cancelBooking, settleBooking, getErrorMessage, fetchHoodExperts, assignExpert } from '../../services/api';
+import { createCalendarEvent, formatIndiaDateTime, formatTime12Hour, getRemainingTime, getServiceEndTime } from '../../utils/helpers';
 import THEME from '../../constants/theme';
+
+const DAY_INDEX_BY_NAME = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7,
+};
+
+const isClosedValue = value =>
+  value === true || String(value).toLowerCase() === 'true';
+
+const getIndiaSlotParts = value => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const getPart = type => parts.find(part => part.type === type)?.value;
+  const dayOfWeek = DAY_INDEX_BY_NAME[getPart('weekday')];
+  const hours = Number(getPart('hour'));
+  const minutes = Number(getPart('minute'));
+  if (!dayOfWeek || !Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return { dayOfWeek, minutes: hours * 60 + minutes };
+};
+
+const timeToMinutes = value => {
+  if (!value) return null;
+  const [hours, minutes] = String(value).split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
+const getExpertEligibility = (expert, booking) => {
+  const service = booking?.services?.[0] || {};
+  const categoryId = service.categoryId || booking?.categoryId;
+  const subcategoryId =
+    service.subcategoryId ||
+    service.subCategoryId ||
+    booking?.subcategoryId ||
+    booking?.subCategoryId;
+  const expertises =
+    expert.expertises ||
+    expert.expertiseList ||
+    expert.hoodUserExpertises ||
+    [];
+
+  if ((categoryId || subcategoryId) && expertises.length > 0) {
+    const expertiseMatch = expertises.some(expertise => {
+      const expertCategoryId = expertise.categoryId || expertise.category?.id;
+      const expertSubcategoryId =
+        expertise.subcategoryId ||
+        expertise.subCategoryId ||
+        expertise.subcategory?.id;
+      if (subcategoryId) {
+        return (
+          String(expertSubcategoryId || '') === String(subcategoryId) &&
+          (!categoryId || String(expertCategoryId || '') === String(categoryId))
+        );
+      }
+      return String(expertCategoryId || '') === String(categoryId);
+    });
+    if (!expertiseMatch) return { eligible: false, reason: 'EXPERTISE' };
+  }
+
+  const assignmentStart =
+    service.expertSlotStart ||
+    service.slotStart ||
+    booking?.expertSlotStart ||
+    booking?.slotStart;
+  const assignmentEnd =
+    service.expertSlotEnd ||
+    service.slotEnd ||
+    booking?.expertSlotEnd ||
+    booking?.slotEnd;
+  const start = getIndiaSlotParts(assignmentStart);
+  const end = getIndiaSlotParts(assignmentEnd);
+
+  if (!start || !end || start.dayOfWeek !== end.dayOfWeek) {
+    return { eligible: false, reason: 'SCHEDULE' };
+  }
+
+  const workingHours =
+    expert.workingHours ||
+    expert.hoodUserWorkingHours ||
+    expert.expertWorkingHours ||
+    [];
+  const shift = workingHours.find(
+    day => Number(day.dayOfWeek) === start.dayOfWeek,
+  );
+  if (!shift || isClosedValue(shift.isClosed)) {
+    return { eligible: false, reason: 'LEAVE' };
+  }
+
+  const shiftStart = timeToMinutes(
+    shift.workStartTime || shift.startTime || shift.openTime,
+  );
+  const shiftEnd = timeToMinutes(
+    shift.workEndTime || shift.endTime || shift.closeTime,
+  );
+  if (
+    shiftStart === null ||
+    shiftEnd === null ||
+    start.minutes < shiftStart ||
+    end.minutes > shiftEnd
+  ) {
+    return { eligible: false, reason: 'SCHEDULE' };
+  }
+
+  return { eligible: true, reason: null };
+};
 
 export default function BookingDetail() {
   const router = useRouter();
@@ -52,21 +171,45 @@ const [remainingTime, setRemainingTime] = useState('');
   }, []);
 
   useEffect(() => {
-    if (bookingParam) {
+    let active = true;
+
+    const loadRouteBooking = async () => {
+      if (!bookingParam) return;
       try {
-        const parsed = JSON.parse(bookingParam as string);
-        setBooking(parsed);
-        if (parsed.userId) {
-          loadUserDetails(parsed.userId);
+        const rawBookingParam = Array.isArray(bookingParam) ? bookingParam[0] : bookingParam;
+        const parsed = JSON.parse(rawBookingParam as string);
+        const routeBookingId = Array.isArray(id) ? id[0] : id;
+        let currentBooking = parsed;
+
+        if (parsed.hoodId && routeBookingId) {
+          try {
+            const response = await fetchBookings(parsed.hoodId, 0, 100);
+            const fetchedBookings = response?._embedded?.bookingDetailsResponses || [];
+            currentBooking =
+              fetchedBookings.find(item => item.bookingId === routeBookingId) || parsed;
+          } catch (error) {
+            console.error('Failed to refresh route booking:', error);
+          }
+        }
+
+        if (!active) return;
+        setBooking(currentBooking);
+        if (currentBooking.userId) {
+          loadUserDetails(currentBooking.userId);
         } else {
           setLoadingUser(false);
         }
       } catch (e) {
         console.error('Failed to parse booking:', e);
-        setLoadingUser(false);
+        if (active) setLoadingUser(false);
       }
-    }
-  }, [bookingParam]);
+    };
+
+    loadRouteBooking();
+    return () => {
+      active = false;
+    };
+  }, [bookingParam, id]);
 
 
 useEffect(() => {
@@ -160,14 +303,15 @@ const loadExperts = async (hoodId) => {
     const data = await fetchHoodExperts(hoodId);
 
     const normalized = (data || [])
-      // ✅ Only ACTIVE experts
-      .filter((item) => item.status === 'ACTIVE')
+      .filter((item) => String(item.status || '').toUpperCase() === 'ACTIVE')
+      .filter(item => getExpertEligibility(item, booking).eligible)
       .map((item, index) => ({
         id: item.id || item.userId || item.expertUserId,
         name:
           item.name ||
           item.fullName ||
           item.userName ||
+          item.user?.name ||
           `Expert ${index + 1}`,
       }));
 
@@ -203,6 +347,7 @@ if (selectedExpert && selectedExpert.id !== expert.id) {
     await assignExpert(booking.bookingId, expert.id);
 
     setSelectedExpert(expert);
+    await refreshCurrentBooking();
 
     showToast(`${expert.name} assigned`, 'success');
 
@@ -221,15 +366,35 @@ if (selectedExpert && selectedExpert.id !== expert.id) {
     }
   };
 
+  const refreshCurrentBooking = async () => {
+    if (!booking?.hoodId || !booking?.bookingId) return;
+
+    try {
+      const response = await fetchBookings(booking.hoodId, 0, 100);
+      const refreshedBookings = response?._embedded?.bookingDetailsResponses || [];
+      const refreshedBooking = refreshedBookings.find(
+        (item: any) => item.bookingId === booking.bookingId
+      );
+
+      if (refreshedBooking) {
+        setBooking(refreshedBooking);
+      }
+    } catch (error) {
+      console.error('Failed to refresh updated booking:', error);
+    }
+  };
+
   const handleSettle = async () => {
     if (!booking?.bookingId) return;
     
     try {
       setActionLoading(true);
-      await settleBooking(booking.bookingId);
-      setBooking({ ...booking, status: 'SETTLED' });
+      const updatedBooking = await settleBooking(booking.bookingId);
+      setBooking((current: any) => ({ ...current, ...updatedBooking }));
+      await refreshCurrentBooking();
       showToast('Booking settled successfully!', 'success');
     } catch (err: any) {
+      if (err?.apiStatus === 409) await refreshCurrentBooking();
       showToast(getErrorMessage(err), 'error');
     } finally {
       setActionLoading(false);
@@ -242,10 +407,12 @@ if (selectedExpert && selectedExpert.id !== expert.id) {
     
     try {
       setActionLoading(true);
-      await cancelBooking(booking.bookingId);
-      setBooking({ ...booking, status: 'CANCELLED' });
+      const updatedBooking = await cancelBooking(booking.bookingId);
+      setBooking((current: any) => ({ ...current, ...updatedBooking }));
+      await refreshCurrentBooking();
       showToast('Booking cancelled successfully!', 'success');
     } catch (err: any) {
+      if (err?.apiStatus === 409) await refreshCurrentBooking();
       showToast(getErrorMessage(err), 'error');
     } finally {
       setActionLoading(false);
@@ -259,38 +426,25 @@ if (selectedExpert && selectedExpert.id !== expert.id) {
     }
   };
 
+  const handleCopyPhone = async (phone: string) => {
+    if (!phone || phone === 'N/A') return;
+    await Clipboard.setStringAsync(phone);
+    showToast('Mobile number copied', 'success');
+  };
+
+  const handleCopyCoordinates = async () => {
+    const coordinates = getCoordinates();
+    if (!coordinates) return;
+    await Clipboard.setStringAsync(coordinates);
+    showToast('Coordinates copied', 'success');
+  };
+
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning') => {
     setToast({ visible: true, message, type });
   };
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-IN', {
-        weekday: 'short',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return dateString;
-    }
-  };
-
-  const formatAmount = (amount?: number) => {
-    if (amount === undefined || amount === null) return '₹0';
-    return `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-  };
-
-  const getAmount = () => {
-    return booking?.priceSummary?.grandTotal || 
-           booking?.amount || 
-           booking?.totalAmount || 
-           booking?.services?.[0]?.totalAmount ||
-           0;
+    return formatIndiaDateTime(dateString);
   };
 
   const getServiceName = () => {
@@ -321,9 +475,22 @@ if (selectedExpert && selectedExpert.id !== expert.id) {
     return user?.phone || user?.phoneNumber || user?.mobile || booking?.phone || 'N/A';
   };
 
+  const getCoordinates = () => {
+    const address = booking?.bookingAddress;
+    if (
+      address?.latitude === undefined ||
+      address?.latitude === null ||
+      address?.longitude === undefined ||
+      address?.longitude === null
+    ) {
+      return '';
+    }
+    return `${address.latitude}, ${address.longitude}`;
+  };
+
   const getGoogleMapLink = () => {
   const addr = booking?.bookingAddress;
-  if (!addr?.latitude || !addr?.longitude) return '';
+  if (!getCoordinates()) return '';
 
   const lat = Number(addr.latitude).toFixed(6);
   const lng = Number(addr.longitude).toFixed(6);
@@ -519,6 +686,29 @@ const handleAddToCalendar = async () => {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryTop}>
+            <View style={styles.summaryServiceIcon}>
+              <Ionicons name="briefcase-outline" size={22} color={THEME.colors.primary} />
+            </View>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.summaryEyebrow}>Service booking</Text>
+              <Text style={styles.summaryService}>{getServiceName() || 'Service details'}</Text>
+            </View>
+          </View>
+          {booking.services?.[0]?.slotStart && (
+            <View style={styles.summarySchedule}>
+              <Ionicons name="calendar-outline" size={18} color={THEME.colors.primary} />
+              <Text style={styles.summaryScheduleText}>
+                {formatDate(booking.services[0].slotStart)}
+                {booking.services[0].slotEnd
+                  ? ` – ${formatTime12Hour(booking.services[0].slotEnd)}`
+                  : ''}
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* Booking Info Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -528,12 +718,17 @@ const handleAddToCalendar = async () => {
 
           <View style={styles.infoCard}>
             <InfoRow label="Created" value={formatDate(booking.createdAt)} />
-            <InfoRow label="Total Amount" value={formatAmount(getAmount())} highlight />
             {getServiceName() && (
               <InfoRow label="Service" value={getServiceName()} />
             )}
             {booking.services?.[0]?.slotStart && (
               <InfoRow label="Slot Time" value={formatDate(booking.services[0].slotStart)} />
+            )}
+            {booking.services?.[0]?.slotEnd && (
+              <InfoRow label="Slot Ends" value={formatDate(booking.services[0].slotEnd)} />
+            )}
+            {booking.services?.[0]?.durationMinutes && (
+              <InfoRow label="Duration" value={`${booking.services[0].durationMinutes} minutes`} />
             )}
            
           </View>
@@ -582,6 +777,14 @@ const handleAddToCalendar = async () => {
           getServiceEndTime(booking),
         )}
       />
+
+      {booking?.status?.toUpperCase() === 'IN_PROGRESS' && (
+        <InfoRow
+          label="Time Remaining"
+          value={remainingTime || getRemainingTime(booking)}
+          highlight
+        />
+      )}
     
      {/* OTPs only for active bookings */}
 {booking?.status?.toUpperCase() !== 'SETTLED' &&
@@ -640,12 +843,18 @@ const handleAddToCalendar = async () => {
     </Text>
   </View>
 <View style={styles.infoCard}>
+  <View style={styles.eligibilityNote}>
+    <Ionicons name="filter-outline" size={16} color={THEME.colors.primary} />
+    <Text style={styles.eligibilityNoteText}>
+      Showing active experts whose expertise and shift cover this booking.
+    </Text>
+  </View>
 
   {loadingExperts ? (
     <ActivityIndicator size="small" color={THEME.colors.primary} />
-  ) : experts.length === 0 ? (
-    <Text style={{ color: THEME.colors.textMuted }}>
-      No experts available
+  ) : experts.length === 0 && !selectedExpert ? (
+    <Text style={styles.noEligibleExperts}>
+      No eligible experts match this service and booking time.
     </Text>
   ) : (
     <>
@@ -663,21 +872,22 @@ const handleAddToCalendar = async () => {
       )}
 
       {/* ✅ Remaining Experts */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.expertList}
-      >
-        {experts
-          .filter(e => e.id !== selectedExpert?.id)
-          .map((expert, index) => {
+      {experts.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.expertList}
+        >
+          {experts
+            .filter(e => e.id !== selectedExpert?.id)
+            .map((expert, index) => {
 
-            const displayName =
-              expert.name || `Expert ${index + 1}`;
+              const displayName =
+                expert.name || `Expert ${index + 1}`;
 
-            return (
-              <TouchableOpacity
-                key={expert.id || index}
+              return (
+                <TouchableOpacity
+                  key={expert.id || index}
                 onPress={() => handleAssignExpert(expert)}
                 style={[
                   styles.expertChip,
@@ -688,10 +898,11 @@ const handleAddToCalendar = async () => {
                 <Text style={styles.expertText}>
                   {displayName}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-      </ScrollView>
+                </TouchableOpacity>
+              );
+            })}
+        </ScrollView>
+      )}
     </>
   )}
 
@@ -712,6 +923,26 @@ const handleAddToCalendar = async () => {
 
     <View style={styles.infoCard}>
       <Text style={styles.addressText}>{getAddress()}</Text>
+
+      {getCoordinates() !== '' && (
+        <View style={styles.coordinateRow}>
+          <View style={styles.coordinateCopy}>
+            <Text style={styles.coordinateLabel}>Coordinates</Text>
+            <Text style={styles.coordinateValue} selectable>
+              {getCoordinates()}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={infoStyles.copyButton}
+            onPress={handleCopyCoordinates}
+            accessibilityRole="button"
+            accessibilityLabel="Copy booking coordinates"
+            hitSlop={8}
+          >
+            <Ionicons name="copy-outline" size={18} color={THEME.colors.primary} />
+          </TouchableOpacity>
+        </View>
+      )}
 
      {getGoogleMapLink() !== '' && (
         <View style={styles.mapActionsInline}>
@@ -773,24 +1004,39 @@ const handleAddToCalendar = async () => {
                   value={user?.name || user?.fullName || booking.userName || 'N/A'}
                   icon="person"
                 />
-                <TouchableOpacity onPress={() => handleCallUser(getUserPhone())}>
-                  <InfoRow
-                    label="Phone"
-                    value={getUserPhone()}
-                    icon="call"
-                    actionable={getUserPhone() !== 'N/A'}
-                  />
-                </TouchableOpacity>
+                <View style={infoStyles.row}>
+                  <View style={infoStyles.labelContainer}>
+                    <Ionicons name="call" size={16} color={THEME.colors.textMuted} style={infoStyles.icon} />
+                    <Text style={infoStyles.label}>Phone</Text>
+                  </View>
+                  <View style={infoStyles.phoneActions}>
+                    <TouchableOpacity
+                      onPress={() => handleCallUser(getUserPhone())}
+                      disabled={getUserPhone() === 'N/A'}
+                      accessibilityRole="link"
+                      accessibilityLabel={`Call ${getUserPhone()}`}
+                    >
+                      <Text style={[infoStyles.value, infoStyles.phoneValue]}>
+                        {getUserPhone()}
+                      </Text>
+                    </TouchableOpacity>
+                    {getUserPhone() !== 'N/A' && (
+                      <TouchableOpacity
+                        style={infoStyles.copyButton}
+                        onPress={() => handleCopyPhone(getUserPhone())}
+                        accessibilityRole="button"
+                        accessibilityLabel="Copy mobile number"
+                        hitSlop={8}
+                      >
+                        <Ionicons name="copy-outline" size={18} color={THEME.colors.primary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
                 <InfoRow
                   label="Email"
                   value={user?.email || booking.email || 'N/A'}
                   icon="mail"
-                />
-                <InfoRow
-                  label="User ID"
-                  value={booking.userId || 'N/A'}
-                  icon="finger-print"
-                  copyable
                 />
               </>
             )}
@@ -813,11 +1059,6 @@ const handleAddToCalendar = async () => {
               <InfoRow
                 label="Payment Mode"
                 value={booking.paymentTransactionResponses[0].transactionMode || 'N/A'}
-              />
-              <InfoRow
-                label="Amount Paid"
-                value={formatAmount(booking.paymentTransactionResponses[0].amount)}
-                highlight
               />
               {booking.paymentTransactionResponses[0].remarks && (
                 <InfoRow
@@ -947,6 +1188,28 @@ const infoStyles = StyleSheet.create({
     textAlign: 'right',
     marginLeft: 16,
   },
+  phoneActions: {
+    flex: 1,
+    marginLeft: 16,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+  },
+  phoneValue: {
+    flex: 0,
+    marginLeft: 0,
+    color: THEME.colors.primary,
+    textDecorationLine: 'underline',
+  },
+  copyButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3E8FF',
+  },
   highlightValue: {
     fontSize: 16,
     fontWeight: '700',
@@ -1001,6 +1264,21 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 16,
   },
+  summaryCard: {
+    marginBottom: 22,
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: '#F3E8FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+  },
+  summaryTop: { flexDirection: 'row', alignItems: 'center' },
+  summaryServiceIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  summaryCopy: { flex: 1, marginHorizontal: 11 },
+  summaryEyebrow: { color: THEME.colors.primary, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.7 },
+  summaryService: { marginTop: 3, color: THEME.colors.text, fontSize: 16, fontWeight: '800' },
+  summarySchedule: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#D8B4FE', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  summaryScheduleText: { flex: 1, color: THEME.colors.text, fontSize: 12, fontWeight: '700' },
   section: {
     marginBottom: 20,
   },
@@ -1035,6 +1313,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: THEME.colors.text,
     lineHeight: 22,
+  },
+  coordinateRow: {
+    marginTop: 12,
+    paddingTop: 11,
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.divider,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  coordinateCopy: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  coordinateLabel: {
+    color: THEME.colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  coordinateValue: {
+    marginTop: 3,
+    color: THEME.colors.text,
+    fontSize: 12,
+    fontWeight: '700',
   },
   loadingRow: {
     flexDirection: 'row',
@@ -1136,6 +1439,27 @@ expertText: {
 
 expertTextActive: {
   color: '#FFF',
+},
+eligibilityNote: {
+  marginBottom: 14,
+  padding: 10,
+  borderRadius: 10,
+  backgroundColor: '#FAF5FF',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 7,
+},
+eligibilityNoteText: {
+  flex: 1,
+  color: THEME.colors.textSecondary,
+  fontSize: 11,
+  lineHeight: 16,
+},
+noEligibleExperts: {
+  paddingVertical: 10,
+  color: THEME.colors.textMuted,
+  fontSize: 13,
+  lineHeight: 19,
 },
 assignedWrapper: {
   marginBottom: 16,

@@ -15,6 +15,12 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="booking/[id]" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="experts" />
+        <Stack.Screen name="operating-hours" />
+        <Stack.Screen name="hood-items" />
+        <Stack.Screen name="admin-settings" />
+        <Stack.Screen name="catalog" />
+        <Stack.Screen name="hood-management" />
       </Stack>
     </SafeAreaProvider>
   );
