@@ -2,11 +2,11 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import type { PropsWithChildren } from "react";
 
-const appIcon = require("../assets/images/icon.png").uri;
+const favicon = require("../assets/images/favicon.png").uri;
 const manifest = encodeURIComponent(
   JSON.stringify({
     name: "Qwiky Admin",
-    short_name: "QAdmin",
+    short_name: "Qwiky Admin",
     description: "Internal Booking Management System",
     start_url: "/",
     scope: "/",
@@ -15,7 +15,7 @@ const manifest = encodeURIComponent(
     theme_color: "#4e2780",
     background_color: "#ffffff",
     icons: [
-      { src: appIcon, sizes: "1024x1024", type: "image/png", purpose: "any maskable" },
+      { src: favicon, sizes: "1024x1024", type: "image/png", purpose: "any maskable" },
     ],
   }),
 );
@@ -34,8 +34,8 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Qwiky Admin" />
-        <link rel="icon" type="image/png" href={appIcon} />
-        <link rel="apple-touch-icon" href={appIcon} />
+        <link rel="icon" type="image/png" href={favicon} />
+        <link rel="apple-touch-icon" sizes="1024x1024" href={favicon} />
         <link rel="manifest" href={`data:application/manifest+json,${manifest}`} />
         {/*
           Disable body scrolling on web to make ScrollView components work correctly.
