@@ -99,9 +99,7 @@ const HoodRadiusPreview = ({ values }) => {
     );
   }
 
-  const googleMapsApiKey =
-    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
-    'AIzaSyCnEy2SOjryaHzkyz0EemSMIcghwl6QpoU';
+  const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!googleMapsApiKey) {
     return (
       <View style={styles.mapEmpty}>

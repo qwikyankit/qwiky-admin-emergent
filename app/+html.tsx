@@ -2,6 +2,24 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import type { PropsWithChildren } from "react";
 
+const appIcon = require("../assets/images/icon.png").uri;
+const manifest = encodeURIComponent(
+  JSON.stringify({
+    name: "Qwiky Admin",
+    short_name: "QAdmin",
+    description: "Internal Booking Management System",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    orientation: "portrait",
+    theme_color: "#4e2780",
+    background_color: "#ffffff",
+    icons: [
+      { src: appIcon, sizes: "1024x1024", type: "image/png", purpose: "any maskable" },
+    ],
+  }),
+);
+
 export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="en" style={{ height: "100%" }}>
@@ -12,6 +30,13 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
         />
+        <meta name="theme-color" content="#4e2780" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Qwiky Admin" />
+        <link rel="icon" type="image/png" href={appIcon} />
+        <link rel="apple-touch-icon" href={appIcon} />
+        <link rel="manifest" href={`data:application/manifest+json,${manifest}`} />
         {/*
           Disable body scrolling on web to make ScrollView components work correctly.
           If you want to enable scrolling, remove `ScrollViewStyleReset` and
