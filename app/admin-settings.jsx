@@ -5,19 +5,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Toast from '../components/Toast';
 import THEME from '../constants/theme';
-import { logout } from '../services/api';
+import { logout, logoutAllDevices } from '../services/api';
 
 export default function AdminSettings() {
   const router = useRouter();
   const [logoutVisible, setLogoutVisible] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
 
-  const handleLogout = async () => {
+  const handleLogout = async (allDevices = false) => {
     try {
-      await logout();
+      setLogoutLoading(true);
+      await (allDevices ? logoutAllDevices() : logout());
       router.replace('/login');
     } catch {
       setToast({ visible: true, message: 'Unable to logout', type: 'error' });
+    } finally {
+      setLogoutLoading(false);
+      setLogoutVisible(false);
     }
   };
 
@@ -90,15 +95,24 @@ export default function AdminSettings() {
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>Logout?</Text>
-            <Text style={styles.modalText}>Are you sure you want to end this admin session?</Text>
+            <Text style={styles.modalText}>Choose whether to logout from this device or all devices.</Text>
             <View style={styles.actions}>
-              <TouchableOpacity onPress={() => setLogoutVisible(false)} style={styles.cancel}>
+              <TouchableOpacity disabled={logoutLoading} onPress={() => setLogoutVisible(false)} style={styles.cancel}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleLogout} style={styles.confirm}>
-                <Text style={styles.confirmText}>Logout</Text>
+              <TouchableOpacity disabled={logoutLoading} onPress={() => handleLogout(false)} style={styles.confirm}>
+                <Text style={styles.confirmText}>This device</Text>
               </TouchableOpacity>
             </View>
+            <TouchableOpacity
+              disabled={logoutLoading}
+              onPress={() => handleLogout(true)}
+              style={styles.confirmAll}
+            >
+              <Text style={styles.confirmText}>
+                {logoutLoading ? 'Logging out…' : 'Logout from all devices'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -135,5 +149,6 @@ const styles = StyleSheet.create({
   cancel: { flex: 1, height: 44, borderRadius: 11, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   cancelText: { color: THEME.colors.textSecondary, fontWeight: '700' },
   confirm: { flex: 1, height: 44, borderRadius: 11, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center' },
+  confirmAll: { height: 44, marginTop: 10, borderRadius: 11, backgroundColor: '#991B1B', alignItems: 'center', justifyContent: 'center' },
   confirmText: { color: '#FFF', fontWeight: '800' },
 });

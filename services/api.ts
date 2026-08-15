@@ -55,6 +55,46 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
+let refreshPromise: Promise<string> | null = null;
+
+const isAuthenticationEndpoint = (url = '') =>
+  ['/auth/otp/', '/auth/token/refresh', '/auth/logout'].some(path =>
+    url.includes(path),
+  );
+
+const refreshAccessToken = async (): Promise<string> => {
+  const refreshToken = await getRefreshToken();
+
+  if (!refreshToken) {
+    throw new Error('Refresh token is unavailable');
+  }
+
+  const response = await axios.post(
+    `${API_BASE_URL}/auth/token/refresh`,
+    {},
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Refresh-Token': refreshToken,
+      },
+    },
+  );
+  const refreshedAuth =
+    response.data?.authResponse || response.data?.auth || response.data;
+  const accessToken = refreshedAuth?.accessToken;
+
+  if (!accessToken) {
+    throw new Error('Refresh response did not include an access token');
+  }
+
+  await saveToken(accessToken);
+  if (refreshedAuth?.refreshToken) {
+    await saveRefreshToken(refreshedAuth.refreshToken);
+  }
+
+  return accessToken;
+};
+
 // Request interceptor to attach token
 apiClient.interceptors.request.use(
   async config => {
@@ -103,13 +143,63 @@ apiClient.interceptors.response.use(
     error.friendlyMessage = errorMessage;
 
     if (error.response?.status === 401) {
-      console.log("Session expired");
+      const originalRequest = error.config as any;
+      const requestUrl = originalRequest?.url || '';
 
-      await removeToken();
+      if (
+        originalRequest &&
+        !originalRequest._retry &&
+        !isAuthenticationEndpoint(requestUrl)
+      ) {
+        const currentAccessToken = await getToken();
+        const failedAuthorization = String(
+          originalRequest.headers?.Authorization ||
+            originalRequest.headers?.authorization ||
+            '',
+        );
+        const failedAccessToken = failedAuthorization.replace(/^Bearer\s+/i, '');
 
-      redirectToLogin();
+        if (
+          currentAccessToken &&
+          failedAccessToken &&
+          currentAccessToken !== failedAccessToken
+        ) {
+          originalRequest._retry = true;
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${currentAccessToken}`;
+          return apiClient(originalRequest);
+        }
+      }
 
-      return Promise.reject(error);
+      if (
+        originalRequest &&
+        !originalRequest._retry &&
+        !isAuthenticationEndpoint(requestUrl)
+      ) {
+        originalRequest._retry = true;
+
+        try {
+          if (!refreshPromise) {
+            refreshPromise = refreshAccessToken().finally(() => {
+              refreshPromise = null;
+            });
+          }
+
+          const accessToken = await refreshPromise;
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          return apiClient(originalRequest);
+        } catch (refreshError) {
+          await removeToken();
+          redirectToLogin();
+          return Promise.reject(refreshError);
+        }
+      }
+
+      if (!isAuthenticationEndpoint(requestUrl)) {
+        await removeToken();
+        redirectToLogin();
+      }
     }
 
     return Promise.reject(error);
@@ -529,7 +619,31 @@ export const verifyOtp = async (
 };
 
 export const logout = async () => {
+  const refreshToken = await getRefreshToken();
+
+  try {
+    await apiClient.post(
+      '/auth/logout',
+      {},
+      refreshToken
+        ? { headers: { 'X-Refresh-Token': refreshToken } }
+        : undefined,
+    );
+  } catch (error) {
+    console.warn('Server logout failed; completing local logout.', error);
+  } finally {
     await removeToken();
+  }
+};
+
+export const logoutAllDevices = async () => {
+  try {
+    await apiClient.post('/auth/logout-all');
+  } catch (error) {
+    console.warn('Server logout-all failed; completing local logout.', error);
+  } finally {
+    await removeToken();
+  }
 };
 
 export const saveToken = async token => {
