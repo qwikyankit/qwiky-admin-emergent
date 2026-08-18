@@ -13,7 +13,7 @@ const ONESIGNAL_API_KEY = process.env.EXPO_PUBLIC_ONESIGNAL_API_KEY;
 // IMPORTANT: Must stay '/api' for Vercel rewrite to work
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
-  'https://api.qwiky.in/qwiky-service/api/v1';
+  'https://devapi.qwiky.in/qwiky-service/api/v1';
 
 
 // Hardcoded Hood ID (as requested)
@@ -637,13 +637,17 @@ export const logout = async () => {
 };
 
 export const logoutAllDevices = async () => {
-  try {
-    await apiClient.post('/auth/logout-all');
-  } catch (error) {
-    console.warn('Server logout-all failed; completing local logout.', error);
-  } finally {
-    await removeToken();
-  }
+  const refreshToken = await getRefreshToken();
+  const response = await apiClient.post(
+    '/auth/logout-all',
+    {},
+    refreshToken
+      ? { headers: { 'X-Refresh-Token': refreshToken } }
+      : undefined,
+  );
+
+  await removeToken();
+  return response.data;
 };
 
 export const saveToken = async token => {

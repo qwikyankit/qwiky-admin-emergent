@@ -18,8 +18,16 @@ export default function AdminSettings() {
       setLogoutLoading(true);
       await (allDevices ? logoutAllDevices() : logout());
       router.replace('/login');
-    } catch {
-      setToast({ visible: true, message: 'Unable to logout', type: 'error' });
+    } catch (error) {
+      setToast({
+        visible: true,
+        message:
+          error?.friendlyMessage ||
+          (allDevices
+            ? 'Unable to logout from all devices. Please try again.'
+            : 'Unable to logout.'),
+        type: 'error',
+      });
     } finally {
       setLogoutLoading(false);
       setLogoutVisible(false);
