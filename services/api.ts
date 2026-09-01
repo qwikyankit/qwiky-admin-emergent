@@ -285,7 +285,12 @@ export const updateCategory = async (categoryId, payload) => {
 };
 
 export const createSubcategory = async payload => {
-  const response = await apiClient.post('/subcategories/', payload);
+  const response = await apiClient.post('/subcategories', payload);
+  return response.data;
+};
+
+export const updateSubcategory = async (subcategoryId, payload) => {
+  const response = await apiClient.put(`/subcategories/${subcategoryId}`, payload);
   return response.data;
 };
 

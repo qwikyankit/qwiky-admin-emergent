@@ -30,6 +30,7 @@ import {
   updateCategory,
   updateItem,
   updateProduct,
+  updateSubcategory,
 } from '../services/api';
 
 const EMPTY = {
@@ -75,6 +76,7 @@ export default function Catalog() {
   const [products, setProducts] = useState([]);
   const [items, setItems] = useState([]);
   const [expanded, setExpanded] = useState({});
+  const [expandedSubcategories, setExpandedSubcategories] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(null);
@@ -170,14 +172,16 @@ export default function Catalog() {
         if (editing) await updateCategory(id, payload);
         else await createCategory(payload);
       } else if (type === 'subcategory') {
-        await createSubcategory({
+        const payload = {
           categoryId: values.categoryId,
           name: values.name.trim(),
           slug: values.slug.trim(),
           description: values.description.trim(),
           status: values.status,
           sequenceNumber: numeric(values.sequenceNumber),
-        });
+        };
+        if (editing) await updateSubcategory(id, payload);
+        else await createSubcategory(payload);
       } else if (type === 'product') {
         const payload = {
           name: values.name.trim(),
@@ -258,14 +262,35 @@ export default function Catalog() {
             </View>
             {isExpanded && childSubcategories.map(subcategory => {
               const childItems = items.filter(item => item.subcategoryId === subcategory.id);
+              const isSubcategoryExpanded = expandedSubcategories[subcategory.id] !== false;
               return (
                 <View key={subcategory.id} style={styles.subcategory}>
                   <View style={styles.row}>
                     <View style={styles.treeLine} />
-                    <View style={styles.rowCopy}>
-                      <Text style={styles.subcategoryTitle}>{subcategory.name}</Text>
-                      <Text style={styles.rowMeta}>{childItems.length} items</Text>
-                    </View>
+                    <TouchableOpacity
+                      style={styles.subcategoryToggle}
+                      onPress={() =>
+                        setExpandedSubcategories(current => ({
+                          ...current,
+                          [subcategory.id]: !isSubcategoryExpanded,
+                        }))
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`${isSubcategoryExpanded ? 'Minimize' : 'Expand'} ${subcategory.name}`}
+                    >
+                      <Ionicons
+                        name={isSubcategoryExpanded ? 'chevron-down' : 'chevron-forward'}
+                        size={17}
+                        color={THEME.colors.primary}
+                      />
+                      <View style={styles.rowCopy}>
+                        <Text style={styles.subcategoryTitle}>{subcategory.name}</Text>
+                        <Text style={styles.rowMeta}>{childItems.length} items</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openForm('subcategory', subcategory)} style={styles.smallAction}>
+                      <Ionicons name="create-outline" size={17} color={THEME.colors.primary} />
+                    </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() =>
                         openForm('item', null, {
@@ -279,7 +304,7 @@ export default function Catalog() {
                       <Text style={styles.addItemText}>Item</Text>
                     </TouchableOpacity>
                   </View>
-                  {childItems.map(item => (
+                  {isSubcategoryExpanded && childItems.map(item => (
                     <View key={item.id} style={styles.itemRow}>
                       <Ionicons name="cube-outline" size={16} color={THEME.colors.textSecondary} />
                       <View style={styles.rowCopy}>
@@ -479,6 +504,7 @@ const styles = StyleSheet.create({
   smallAction: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   subcategory: { marginHorizontal: 12, marginBottom: 10, borderRadius: 12, backgroundColor: '#F8FAFC', overflow: 'hidden' },
   treeLine: { width: 4, height: 34, marginRight: 10, borderRadius: 2, backgroundColor: '#D8B4FE' },
+  subcategoryToggle: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 42 },
   subcategoryTitle: { fontSize: 14, fontWeight: '800', color: THEME.colors.text },
   addItemButton: { flexDirection: 'row', gap: 4, alignItems: 'center', padding: 7 },
   addItemText: { color: THEME.colors.primary, fontSize: 11, fontWeight: '800' },
