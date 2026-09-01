@@ -416,7 +416,13 @@ export const fetchHoodItems = async (hoodId) => {
 };
 
 export const createHoodItem = async payload => {
-  const response = await apiClient.post('/hood-items', payload);
+  const response = await apiClient.post('/hood-items', {
+    hoodId: payload.hoodId,
+    itemId: payload.itemId,
+    offerPrice: Number(payload.offerPrice),
+    isAvailable: Boolean(payload.isAvailable),
+    status: payload.status || 'ACTIVE',
+  });
   return response.data;
 };
 

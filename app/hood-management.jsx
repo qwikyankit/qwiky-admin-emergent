@@ -21,7 +21,31 @@ import {
   fetchHoods,
   getErrorMessage,
   updateHood,
+  updateHoodOperatingHours,
 } from '../services/api';
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DEFAULT_OPERATING_HOURS = DAYS.map((_, index) => ({
+  dayOfWeek: index + 1,
+  isClosed: false,
+  openTime: '09:00:00',
+  closeTime: '18:00:00',
+}));
+
+const normalizeOperatingHours = hours =>
+  DEFAULT_OPERATING_HOURS.map(defaultDay => {
+    const savedDay = (hours || []).find(day => Number(day.dayOfWeek) === defaultDay.dayOfWeek);
+    return {
+      ...defaultDay,
+      ...(savedDay || {}),
+      dayOfWeek: defaultDay.dayOfWeek,
+      isClosed: Boolean(savedDay?.isClosed),
+      openTime: savedDay?.openTime || defaultDay.openTime,
+      closeTime: savedDay?.closeTime || defaultDay.closeTime,
+    };
+  });
+
+const apiTime = value => (value && value.length === 5 ? `${value}:00` : value || null);
 
 const EMPTY_HOOD = {
   hoodCode: '',
@@ -36,6 +60,7 @@ const EMPTY_HOOD = {
   serviceableRadiusKm: '1',
   status: 'ACTIVE',
   operatingMode: 'ACTIVE',
+  operatingHours: DEFAULT_OPERATING_HOURS,
 };
 
 const ToggleSetting = ({ title, description, value, onChange, disabled = false }) => {
@@ -227,7 +252,9 @@ export default function HoodManagement() {
   const loadHoods = useCallback(async () => {
     try {
       setLoading(true);
-      setHoods((await fetchHoods({ includeInactive: true })) || []);
+      const loadedHoods = (await fetchHoods({ includeInactive: true })) || [];
+      setHoods(loadedHoods);
+      return loadedHoods;
     } catch (error) {
       setToast({ visible: true, message: getErrorMessage(error), type: 'error' });
     } finally {
@@ -260,6 +287,7 @@ export default function HoodManagement() {
         defaultDispatchTimeMinutes: String(hood.defaultDispatchTimeMinutes ?? 20),
         serviceableRadiusKm: String(hood.serviceableRadiusKm ?? 1),
         paymentTypes: hood.paymentTypes?.length ? hood.paymentTypes : ['PRE_PAYMENT'],
+        operatingHours: normalizeOperatingHours(hood.hoodOperatingHours || hood.operatingHours),
       },
     });
 
@@ -283,6 +311,10 @@ export default function HoodManagement() {
     if (!Number.isFinite(dispatchTime) || dispatchTime < 0) return 'Enter a valid dispatch time';
     if (!Number.isFinite(serviceableRadius) || serviceableRadius <= 0) return 'Serviceable radius must be greater than zero';
     if (!values.paymentTypes.length) return 'Select at least one payment type';
+    const invalidDay = values.operatingHours.find(
+      day => !day.isClosed && (!day.openTime || !day.closeTime || day.openTime >= day.closeTime),
+    );
+    if (invalidDay) return `${DAYS[invalidDay.dayOfWeek - 1]} has invalid operating hours`;
     return null;
   };
 
@@ -308,6 +340,10 @@ export default function HoodManagement() {
       setSaving(true);
       if (form.editing) {
         const updatedHood = await updateHood(form.id, shared);
+        await updateHoodOperatingHours(
+          values.operatingHours.map(day => ({ ...day, openTime: apiTime(day.openTime), closeTime: apiTime(day.closeTime) })),
+          form.id,
+        );
         setHoods(current =>
           current.map(hood =>
             hood.id === form.id
@@ -316,12 +352,25 @@ export default function HoodManagement() {
           ),
         );
       } else {
-        await createHood({
+        const createdHood = await createHood({
           hoodCode: values.hoodCode.trim().toUpperCase(),
           name: values.name.trim(),
           cityId: values.cityId.trim(),
           ...shared,
         });
+        let createdHoodId = createdHood?.id || createdHood?.hoodId;
+        if (!createdHoodId) {
+          const loadedHoods = await loadHoods();
+          createdHoodId = loadedHoods?.find(
+            hood => hood.hoodCode === values.hoodCode.trim().toUpperCase(),
+          )?.id;
+        }
+        if (createdHoodId) {
+          await updateHoodOperatingHours(
+            values.operatingHours.map(day => ({ ...day, openTime: apiTime(day.openTime), closeTime: apiTime(day.closeTime) })),
+            createdHoodId,
+          );
+        }
       }
       setForm(null);
       setPendingToggle(null);
@@ -396,6 +445,18 @@ export default function HoodManagement() {
         ? form.values.paymentTypes.filter(value => value !== paymentType)
         : [...form.values.paymentTypes, paymentType],
     );
+  };
+
+  const changeOperatingHour = (index, field, value) => {
+    const operatingHours = form.values.operatingHours.map((day, dayIndex) =>
+      dayIndex === index ? { ...day, [field]: value } : day,
+    );
+    change('operatingHours', operatingHours);
+  };
+
+  const toggleOperatingDay = index => {
+    const day = form.values.operatingHours[index];
+    changeOperatingHour(index, 'isClosed', !day.isClosed);
   };
 
   const input = (label, field, options = {}) => (
@@ -498,6 +559,46 @@ export default function HoodManagement() {
               {input('Serviceable radius (km)', 'serviceableRadiusKm', { numeric: true })}
               <HoodRadiusPreview values={form.values} />
 
+              <Text style={styles.label}>Operating hours</Text>
+              <Text style={styles.hoursHelp}>Set the default service window for each day.</Text>
+              <View style={styles.hoursCard}>
+                {form.values.operatingHours.map((day, index) => (
+                  <View key={day.dayOfWeek} style={styles.hoursRow}>
+                    <View style={styles.dayCopy}>
+                      <Text style={styles.dayLabel}>{DAYS[index]}</Text>
+                      <Text style={styles.dayState}>{day.isClosed ? 'Closed' : 'Open'}</Text>
+                    </View>
+                    {!day.isClosed && (
+                      <>
+                        <TextInput
+                          value={day.openTime.slice(0, 5)}
+                          onChangeText={value => changeOperatingHour(index, 'openTime', value)}
+                          keyboardType="numbers-and-punctuation"
+                          placeholder="09:00"
+                          style={styles.timeInput}
+                        />
+                        <Text style={styles.timeSeparator}>to</Text>
+                        <TextInput
+                          value={day.closeTime.slice(0, 5)}
+                          onChangeText={value => changeOperatingHour(index, 'closeTime', value)}
+                          keyboardType="numbers-and-punctuation"
+                          placeholder="18:00"
+                          style={styles.timeInput}
+                        />
+                      </>
+                    )}
+                    <TouchableOpacity
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: !day.isClosed }}
+                      onPress={() => toggleOperatingDay(index)}
+                      style={[styles.daySwitch, day.isClosed ? styles.daySwitchOff : styles.daySwitchOn]}
+                    >
+                      <View style={[styles.daySwitchThumb, day.isClosed ? styles.dayThumbLeft : styles.dayThumbRight]} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+
               <Text style={styles.label}>Payment types</Text>
               <View style={styles.choiceRow}>
                 {['PRE_PAYMENT', 'POST_PAYMENT'].map(paymentType => (
@@ -591,6 +692,20 @@ const styles = StyleSheet.create({
   saveText: { padding: 8, color: THEME.colors.primary, fontWeight: '800' },
   formContent: { padding: 16, paddingBottom: 42 },
   label: { marginTop: 9, marginBottom: 6, color: THEME.colors.textSecondary, fontSize: 12, fontWeight: '700' },
+  hoursHelp: { marginTop: -2, marginBottom: 8, color: THEME.colors.textSecondary, fontSize: 11 },
+  hoursCard: { paddingHorizontal: 12, borderRadius: 13, backgroundColor: '#FFF', borderWidth: 1, borderColor: THEME.colors.border },
+  hoursRow: { minHeight: 58, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', flexDirection: 'row', alignItems: 'center', gap: 7 },
+  dayCopy: { width: 72 },
+  dayLabel: { color: THEME.colors.text, fontSize: 12, fontWeight: '800' },
+  dayState: { marginTop: 2, color: THEME.colors.textSecondary, fontSize: 10 },
+  timeInput: { width: 62, height: 36, paddingHorizontal: 7, borderWidth: 1, borderColor: THEME.colors.border, borderRadius: 8, backgroundColor: '#FAFAFA', textAlign: 'center', fontSize: 12 },
+  timeSeparator: { color: THEME.colors.textSecondary, fontSize: 11 },
+  daySwitch: { width: 39, height: 23, marginLeft: 'auto', padding: 3, borderRadius: 12, justifyContent: 'center' },
+  daySwitchOn: { backgroundColor: '#22C55E' },
+  daySwitchOff: { backgroundColor: '#D1D5DB' },
+  daySwitchThumb: { width: 17, height: 17, borderRadius: 9, backgroundColor: '#FFF' },
+  dayThumbLeft: { alignSelf: 'flex-start' },
+  dayThumbRight: { alignSelf: 'flex-end' },
   input: { minHeight: 46, paddingHorizontal: 12, borderWidth: 1, borderColor: THEME.colors.border, borderRadius: 11, backgroundColor: '#FFF' },
   multiline: { minHeight: 76, paddingTop: 12, textAlignVertical: 'top' },
   disabledInput: { backgroundColor: '#F3F4F6', color: THEME.colors.textMuted },

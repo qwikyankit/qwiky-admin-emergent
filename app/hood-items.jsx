@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -19,6 +19,8 @@ import {
   fetchHoodItems,
   fetchItems,
   fetchProducts,
+  fetchCategories,
+  fetchSubcategories,
   getErrorMessage,
   updateHoodItem,
 } from '../services/api';
@@ -31,6 +33,8 @@ export default function HoodItems() {
   const [items, setItems] = useState([]);
   const [catalogItems, setCatalogItems] = useState([]);
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [priceItem, setPriceItem] = useState(null);
@@ -54,10 +58,12 @@ export default function HoodItems() {
     if (!hoodId) return;
     try {
       setLoading(true);
-      const [data, itemData, productData] = await Promise.all([
+      const [data, itemData, productData, categoryData, subcategoryData] = await Promise.all([
         fetchHoodItems(hoodId),
         fetchItems(),
         fetchProducts(),
+        fetchCategories(),
+        fetchSubcategories(),
       ]);
       setItems(
         [...(data || [])].sort(
@@ -66,6 +72,8 @@ export default function HoodItems() {
       );
       setCatalogItems(itemData || []);
       setProducts(productData || []);
+      setCategories(categoryData || []);
+      setSubcategories(subcategoryData || []);
     } catch (error) {
       showToast(getErrorMessage(error), 'error');
     } finally {
@@ -116,6 +124,74 @@ export default function HoodItems() {
     catalogItem.itemCode ||
     'Catalog item';
 
+  const categoryName = categoryId =>
+    categories.find(category => category.id === categoryId)?.name || 'Uncategorized';
+
+  const subcategoryName = subcategoryId =>
+    subcategories.find(subcategory => subcategory.id === subcategoryId)?.name || 'Other items';
+
+  const groupedCatalogItems = useMemo(() => {
+    const groups = new Map();
+    availableCatalogItems.forEach(catalogItem => {
+      const categoryKey = catalogItem.categoryId || 'uncategorized';
+      const subcategoryKey = catalogItem.subcategoryId || 'uncategorized';
+      const category = categories.find(item => item.id === catalogItem.categoryId);
+      const subcategory = subcategories.find(item => item.id === catalogItem.subcategoryId);
+      if (!groups.has(categoryKey)) {
+        groups.set(categoryKey, { name: categoryName(catalogItem.categoryId), sequenceNumber: category?.sequenceNumber, subcategories: new Map() });
+      }
+      const categoryGroup = groups.get(categoryKey);
+      if (!categoryGroup.subcategories.has(subcategoryKey)) {
+        categoryGroup.subcategories.set(subcategoryKey, {
+          name: subcategoryName(catalogItem.subcategoryId),
+          sequenceNumber: subcategory?.sequenceNumber,
+          items: [],
+        });
+      }
+      categoryGroup.subcategories.get(subcategoryKey).items.push(catalogItem);
+    });
+    return [...groups.values()].sort((a, b) => (a.sequenceNumber ?? 999999) - (b.sequenceNumber ?? 999999)).map(categoryGroup => ({
+      ...categoryGroup,
+      subcategories: [...categoryGroup.subcategories.values()].sort((a, b) => (a.sequenceNumber ?? 999999) - (b.sequenceNumber ?? 999999)),
+    }));
+  }, [availableCatalogItems, categories, subcategories, categoryName, subcategoryName]);
+
+  const catalogItemById = useMemo(
+    () => new Map(catalogItems.map(item => [item.id, item])),
+    [catalogItems],
+  );
+
+  const groupedItems = useMemo(() => {
+    const groups = new Map();
+    items.forEach(hoodItem => {
+      const catalogItem = catalogItemById.get(hoodItem.itemId) || {};
+      const category = categories.find(item => item.id === catalogItem.categoryId);
+      const subcategory = subcategories.find(item => item.id === catalogItem.subcategoryId);
+      const categoryKey = category?.id || catalogItem.categoryId || 'uncategorized';
+      const subcategoryKey = subcategory?.id || catalogItem.subcategoryId || 'uncategorized';
+      if (!groups.has(categoryKey)) {
+        groups.set(categoryKey, {
+          name: category?.name || 'Uncategorized',
+          sequenceNumber: category?.sequenceNumber,
+          subcategories: new Map(),
+        });
+      }
+      const categoryGroup = groups.get(categoryKey);
+      if (!categoryGroup.subcategories.has(subcategoryKey)) {
+        categoryGroup.subcategories.set(subcategoryKey, {
+          name: subcategory?.name || 'Other items',
+          sequenceNumber: subcategory?.sequenceNumber,
+          items: [],
+        });
+      }
+      categoryGroup.subcategories.get(subcategoryKey).items.push(hoodItem);
+    });
+    return [...groups.values()].sort((a, b) => (a.sequenceNumber ?? 999999) - (b.sequenceNumber ?? 999999)).map(categoryGroup => ({
+      ...categoryGroup,
+      subcategories: [...categoryGroup.subcategories.values()].sort((a, b) => (a.sequenceNumber ?? 999999) - (b.sequenceNumber ?? 999999)),
+    }));
+  }, [items, catalogItemById, categories, subcategories]);
+
   const openCreate = () => {
     setSelectedItemId('');
     setCreateOfferPrice('');
@@ -124,6 +200,10 @@ export default function HoodItems() {
   };
 
   const saveHoodItem = async () => {
+    if (!hoodId) {
+      showToast('Select a hood before adding an item', 'error');
+      return;
+    }
     if (!selectedItemId) {
       showToast('Select an item from the catalog', 'error');
       return;
@@ -136,10 +216,11 @@ export default function HoodItems() {
     try {
       setSavingId('create');
       await createHoodItem({
-        hoodId,
-        itemId: selectedItemId,
+        hoodId: String(hoodId),
+        itemId: String(selectedItemId),
         offerPrice: price,
-        isAvailable: createAvailable,
+        isAvailable: Boolean(createAvailable),
+        status: 'ACTIVE',
       });
       setCreateVisible(false);
       showToast('Hood item created successfully', 'success');
@@ -186,7 +267,14 @@ export default function HoodItems() {
               <Text style={styles.emptyText}>Item creation can be added to this page next.</Text>
             </View>
           )}
-          {items.map(item => {
+          {groupedItems.map(categoryGroup => (
+            <View key={categoryGroup.name} style={styles.categoryGroup}>
+              <Text style={styles.categoryGroupTitle}>{categoryGroup.name}</Text>
+              {categoryGroup.subcategories.map(subcategoryGroup => (
+                <View key={`${categoryGroup.name}-${subcategoryGroup.name}`}>
+                  <Text style={styles.subcategoryGroupTitle}>{subcategoryGroup.name}</Text>
+                  {subcategoryGroup.items.map(item => {
+            const catalogItem = catalogItemById.get(item.itemId) || {};
             const currentPrice = item.offerPrice ?? item.itemDefaultPrice;
             const discount =
               item.offerPrice != null
@@ -199,7 +287,11 @@ export default function HoodItems() {
                     <Ionicons name="pricetag-outline" size={20} color={THEME.colors.primary} />
                   </View>
                   <View style={styles.itemCopy}>
-                    <Text style={styles.itemName}>{item.productName || item.itemName || 'Service item'}</Text>
+                    <Text style={styles.itemName}>
+                      {catalogItem.id
+                        ? productName(catalogItem)
+                        : item.productName || item.itemName || 'Service item'}
+                    </Text>
                     <Text style={styles.itemStatus}>
                       {item.isAvailable ? 'Available for booking' : 'Unavailable'}
                     </Text>
@@ -244,7 +336,11 @@ export default function HoodItems() {
                 </View>
               </View>
             );
-          })}
+                  })}
+                </View>
+              ))}
+            </View>
+          ))}
         </ScrollView>
       )}
 
@@ -291,7 +387,13 @@ export default function HoodItems() {
                 <Text style={styles.noItemsText}>Every catalog item is already linked to this hood.</Text>
               </View>
             ) : (
-              availableCatalogItems.map(catalogItem => (
+              groupedCatalogItems.map(categoryGroup => (
+                <View key={categoryGroup.name} style={styles.catalogGroup}>
+                  <Text style={styles.catalogGroupTitle}>{categoryGroup.name}</Text>
+                  {categoryGroup.subcategories.map(subcategoryGroup => (
+                    <View key={`${categoryGroup.name}-${subcategoryGroup.name}`}>
+                      <Text style={styles.catalogSubgroupTitle}>{subcategoryGroup.name}</Text>
+                      {subcategoryGroup.items.map(catalogItem => (
                 <TouchableOpacity
                   key={catalogItem.id}
                   onPress={() => {
@@ -312,7 +414,11 @@ export default function HoodItems() {
                       ₹{catalogItem.defaultPrice} · {catalogItem.estimatedTimeMinutes} min
                     </Text>
                   </View>
-                </TouchableOpacity>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ))}
+                </View>
               ))
             )}
 
@@ -362,14 +468,18 @@ const styles = StyleSheet.create({
   addButtonText: { color: '#FFF', fontWeight: '800' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16, paddingBottom: 40 },
+  categoryGroup: { marginBottom: 16 },
+  categoryGroupTitle: { marginBottom: 9, color: THEME.colors.text, fontSize: 18, fontWeight: '900', textAlign: 'center' },
+  subcategoryGroupTitle: { marginTop: 7, marginBottom: 8, paddingHorizontal: 4, color: THEME.colors.primary, fontSize: 14, fontWeight: '800', textAlign: 'center' },
   emptyCard: { alignItems: 'center', padding: 30, borderRadius: 18, backgroundColor: '#FFF' },
   emptyTitle: { marginTop: 10, fontSize: 18, fontWeight: '800', color: THEME.colors.text },
   emptyText: { marginTop: 5, textAlign: 'center', color: THEME.colors.textSecondary },
   card: { padding: 16, marginBottom: 12, borderRadius: 17, backgroundColor: '#FFF', borderWidth: 1, borderColor: THEME.colors.border },
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
   itemIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#F3E8FF', alignItems: 'center', justifyContent: 'center' },
-  itemCopy: { flex: 1, marginHorizontal: 11 },
+  itemCopy: { flex: 1, marginHorizontal: 11, justifyContent: 'center' },
   itemName: { fontSize: 16, fontWeight: '800', color: THEME.colors.text },
+  itemHierarchy: { marginTop: 3, color: THEME.colors.primary, fontSize: 12, fontWeight: '700' },
   itemStatus: { marginTop: 3, color: THEME.colors.textSecondary, fontSize: 12 },
   switchTrack: { width: 46, height: 26, padding: 3, borderRadius: 13, justifyContent: 'center' },
   availableTrack: { backgroundColor: '#22C55E' },
@@ -398,6 +508,9 @@ const styles = StyleSheet.create({
   createHeader: { height: 60, paddingHorizontal: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   saveText: { padding: 8, color: THEME.colors.primary, fontWeight: '800' },
   createContent: { padding: 16, paddingBottom: 40 },
+  catalogGroup: { marginBottom: 14 },
+  catalogGroupTitle: { marginBottom: 6, color: THEME.colors.text, fontSize: 18, fontWeight: '900' },
+  catalogSubgroupTitle: { marginTop: 5, marginBottom: 7, color: THEME.colors.primary, fontSize: 14, fontWeight: '800' },
   fieldLabel: { marginTop: 12, marginBottom: 7, color: THEME.colors.textSecondary, fontSize: 12, fontWeight: '800' },
   catalogItem: { minHeight: 64, padding: 12, marginBottom: 8, borderRadius: 13, borderWidth: 1, borderColor: THEME.colors.border, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center' },
   catalogItemSelected: { borderColor: THEME.colors.primary, backgroundColor: '#FAF5FF' },
