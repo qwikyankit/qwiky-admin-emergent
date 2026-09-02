@@ -284,6 +284,11 @@ export const updateCategory = async (categoryId, payload) => {
   return response.data;
 };
 
+export const deleteCategory = async categoryId => {
+  const response = await apiClient.delete(`/categories/${categoryId}`);
+  return response.data;
+};
+
 export const createSubcategory = async payload => {
   const response = await apiClient.post('/subcategories', payload);
   return response.data;
@@ -291,6 +296,11 @@ export const createSubcategory = async payload => {
 
 export const updateSubcategory = async (subcategoryId, payload) => {
   const response = await apiClient.put(`/subcategories/${subcategoryId}`, payload);
+  return response.data;
+};
+
+export const deleteSubcategory = async subcategoryId => {
+  const response = await apiClient.delete(`/subcategories/${subcategoryId}`);
   return response.data;
 };
 

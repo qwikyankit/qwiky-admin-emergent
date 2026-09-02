@@ -20,8 +20,10 @@ import {
   createItem,
   createProduct,
   createSubcategory,
+  deleteCategory,
   deleteItem,
   deleteProduct,
+  deleteSubcategory,
   fetchCategories,
   fetchItems,
   fetchProducts,
@@ -224,6 +226,8 @@ export default function Catalog() {
     try {
       setSaving(true);
       if (deleteTarget.type === 'product') await deleteProduct(deleteTarget.id);
+      else if (deleteTarget.type === 'category') await deleteCategory(deleteTarget.id);
+      else if (deleteTarget.type === 'subcategory') await deleteSubcategory(deleteTarget.id);
       else await deleteItem(deleteTarget.id);
       setDeleteTarget(null);
       setToast({ visible: true, message: 'Deleted successfully', type: 'success' });
@@ -259,6 +263,9 @@ export default function Catalog() {
               <TouchableOpacity onPress={() => openForm('category', category)} style={styles.smallAction}>
                 <Ionicons name="create-outline" size={18} color={THEME.colors.primary} />
               </TouchableOpacity>
+              <TouchableOpacity onPress={() => setDeleteTarget({ type: 'category', id: category.id, name: category.name })} style={styles.smallAction}>
+                <Ionicons name="trash-outline" size={18} color="#DC2626" />
+              </TouchableOpacity>
             </View>
             {isExpanded && childSubcategories.map(subcategory => {
               const childItems = items.filter(item => item.subcategoryId === subcategory.id);
@@ -290,6 +297,9 @@ export default function Catalog() {
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => openForm('subcategory', subcategory)} style={styles.smallAction}>
                       <Ionicons name="create-outline" size={17} color={THEME.colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setDeleteTarget({ type: 'subcategory', id: subcategory.id, name: subcategory.name })} style={styles.smallAction}>
+                      <Ionicons name="trash-outline" size={17} color="#DC2626" />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() =>
