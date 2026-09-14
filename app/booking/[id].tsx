@@ -18,7 +18,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import StatusBadge from '../../components/StatusBadge';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import Toast from '../../components/Toast';
-import { fetchUserDetails, fetchBookings, cancelBooking, settleBooking, getErrorMessage, fetchHoodExperts, assignExpert } from '../../services/api';
+import { fetchUserDetails, fetchBookings, fetchBookingFeedback, cancelBooking, settleBooking, getErrorMessage, fetchHoodExperts, assignExpert } from '../../services/api';
 import { createCalendarEvent, formatIndiaDateTime, formatTime12Hour, getRemainingTime, getServiceEndTime } from '../../utils/helpers';
 import THEME from '../../constants/theme';
 
@@ -145,6 +145,9 @@ export default function BookingDetail() {
   const { id, booking: bookingParam } = useLocalSearchParams();
   
   const [booking, setBooking] = useState<any>(null);
+  const [feedbackBookings, setFeedbackBookings] = useState<any[]>([]);
+  const [bookingFeedback, setBookingFeedback] = useState<any[]>([]);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -192,8 +195,40 @@ const [remainingTime, setRemainingTime] = useState('');
           }
         }
 
+        const embeddedChildren =
+          currentBooking?.bookings ||
+          currentBooking?.childBookings ||
+          currentBooking?.bookingDetailsResponses ||
+          [];
+        const orderKey =
+          currentBooking?.bookingOrderId ||
+          currentBooking?.orderId ||
+          currentBooking?.bookingOrder?.id ||
+          currentBooking?.orderReferenceId;
+        let childBookings = embeddedChildren;
+        if (!childBookings.length && orderKey && parsed.hoodId) {
+          try {
+            const response = await fetchBookings(parsed.hoodId, 0, 100);
+            const fetchedBookings = response?._embedded?.bookingDetailsResponses || [];
+            childBookings = fetchedBookings.filter(item => {
+              const itemOrderKey =
+                item?.bookingOrderId ||
+                item?.orderId ||
+                item?.bookingOrder?.id ||
+                item?.orderReferenceId;
+              return String(itemOrderKey || '') === String(orderKey);
+            });
+          } catch (error) {
+            console.error('Failed to load sibling bookings for feedback:', error);
+          }
+        }
+        if (!childBookings.length && currentBooking?.bookingId) childBookings = [currentBooking];
+
         if (!active) return;
         setBooking(currentBooking);
+        setFeedbackBookings(
+          childBookings.filter(item => item?.bookingId),
+        );
         if (currentBooking.userId) {
           loadUserDetails(currentBooking.userId);
         } else {
@@ -210,6 +245,35 @@ const [remainingTime, setRemainingTime] = useState('');
       active = false;
     };
   }, [bookingParam, id]);
+
+  useEffect(() => {
+    let active = true;
+    const loadFeedback = async () => {
+      if (!feedbackBookings.length) {
+        setBookingFeedback([]);
+        return;
+      }
+      setLoadingFeedback(true);
+      const results = await Promise.all(
+        feedbackBookings.map(async childBooking => {
+          try {
+            const feedback = await fetchBookingFeedback(childBooking.bookingId);
+            return { booking: childBooking, feedback, available: true };
+          } catch {
+            return { booking: childBooking, feedback: null, available: false };
+          }
+        }),
+      );
+      if (active) {
+        setBookingFeedback(results);
+        setLoadingFeedback(false);
+      }
+    };
+    loadFeedback();
+    return () => {
+      active = false;
+    };
+  }, [feedbackBookings]);
 
 
 useEffect(() => {
@@ -567,6 +631,7 @@ const handleAddToCalendar = async () => {
   const isCancelled = booking?.status?.toUpperCase() === 'CANCELLED';
   const isFailed = booking?.status?.toUpperCase() === 'FAILED';
   const canTakeAction = !isSettled && !isCancelled && !isFailed;
+  const canAssignExpert = booking?.status?.toUpperCase() === 'CONFIRMED';
  
 
   if (!booking) {
@@ -830,7 +895,7 @@ const handleAddToCalendar = async () => {
 )}
         
 {/* ✅ Assign Expert Section */}
-{booking?.status?.toUpperCase() === 'CONFIRMED' && (
+{(canAssignExpert || selectedExpert) && (
 <View style={styles.section}>
   <View style={styles.sectionHeader}>
     <Ionicons
@@ -839,20 +904,24 @@ const handleAddToCalendar = async () => {
       color={THEME.colors.primary}
     />
     <Text style={styles.sectionTitle}>
-      Assign Expert {experts.length ? `(${experts.length})` : ''}
+      {canAssignExpert
+        ? `Assign Expert${experts.length ? ` (${experts.length})` : ''}`
+        : 'Assigned Expert'}
     </Text>
   </View>
 <View style={styles.infoCard}>
+  {canAssignExpert && (
   <View style={styles.eligibilityNote}>
     <Ionicons name="filter-outline" size={16} color={THEME.colors.primary} />
     <Text style={styles.eligibilityNoteText}>
       Showing active experts whose expertise and shift cover this booking.
     </Text>
   </View>
+  )}
 
-  {loadingExperts ? (
+  {canAssignExpert && loadingExperts ? (
     <ActivityIndicator size="small" color={THEME.colors.primary} />
-  ) : experts.length === 0 && !selectedExpert ? (
+  ) : canAssignExpert && experts.length === 0 && !selectedExpert ? (
     <Text style={styles.noEligibleExperts}>
       No eligible experts match this service and booking time.
     </Text>
@@ -872,7 +941,7 @@ const handleAddToCalendar = async () => {
       )}
 
       {/* ✅ Remaining Experts */}
-      {experts.length > 0 && (
+      {canAssignExpert && experts.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1041,6 +1110,108 @@ const handleAddToCalendar = async () => {
               </>
             )}
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="star-outline" size={22} color={THEME.colors.primary} />
+            <Text style={styles.sectionTitle}>Order Feedback</Text>
+          </View>
+          <Text style={styles.feedbackHelp}>
+            Feedback is shown per individual booking in this order.
+          </Text>
+          {loadingFeedback ? (
+            <View style={styles.infoCard}>
+              <View style={styles.loadingRow}>
+                <ActivityIndicator size="small" color={THEME.colors.primary} />
+                <Text style={styles.loadingText}>Loading booking feedback...</Text>
+              </View>
+            </View>
+          ) : (
+            bookingFeedback.map(result => {
+              const child = result.booking;
+              const customerFeedback = result.feedback?.customerFeedback;
+              const expertFeedback = result.feedback?.expertFeedback;
+              const service = child?.services?.[0];
+              const childLabel =
+                service?.productName ||
+                service?.serviceName ||
+                child?.serviceName ||
+                child?.bookingCode ||
+                `Booking ${String(child?.bookingId || '').slice(0, 8)}`;
+              const renderFeedback = (label, feedback) => {
+                const rating = Number(feedback?.rating || 0);
+                const choices =
+                  feedback?.optionLabels ||
+                  feedback?.selectedOptionLabels ||
+                  feedback?.options ||
+                  feedback?.optionCodes ||
+                  [];
+                return (
+                  <View style={styles.feedbackSide}>
+                    <View style={styles.feedbackSideHeader}>
+                      <Text style={styles.feedbackSideLabel}>{label}</Text>
+                      {rating > 0 && (
+                        <View style={styles.feedbackStars}>
+                          {[1, 2, 3, 4, 5].map(value => (
+                            <Ionicons
+                              key={value}
+                              name={value <= rating ? 'star' : 'star-outline'}
+                              size={15}
+                              color={value <= rating ? '#FBBF24' : THEME.colors.textMuted}
+                            />
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                    {rating > 0 ? (
+                      <>
+                        {Array.isArray(choices) && choices.length > 0 && (
+                          <View style={styles.feedbackChoices}>
+                            {choices.map((choice, index) => (
+                              <View key={`${String(choice?.code || choice)}-${index}`} style={styles.feedbackChoice}>
+                                <Text style={styles.feedbackChoiceText}>
+                                  {choice?.label || choice?.code || String(choice)}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                        {!!feedback?.comment && (
+                          <Text style={styles.feedbackComment}>“{feedback.comment}”</Text>
+                        )}
+                      </>
+                    ) : (
+                      <Text style={styles.feedbackEmpty}>Not submitted</Text>
+                    )}
+                  </View>
+                );
+              };
+
+              return (
+                <View key={child.bookingId} style={styles.feedbackCard}>
+                  <View style={styles.feedbackBookingHeader}>
+                    <View style={styles.feedbackBookingIcon}>
+                      <Ionicons name="briefcase-outline" size={18} color={THEME.colors.primary} />
+                    </View>
+                    <View style={styles.feedbackBookingCopy}>
+                      <Text style={styles.feedbackBookingTitle}>{childLabel}</Text>
+                      <Text style={styles.feedbackBookingId}>{child.bookingCode || child.bookingId}</Text>
+                    </View>
+                  </View>
+                  {!result.available ? (
+                    <Text style={styles.feedbackError}>Feedback could not be loaded.</Text>
+                  ) : (
+                    <>
+                      {renderFeedback('Customer → Expert', customerFeedback)}
+                      <View style={styles.feedbackDivider} />
+                      {renderFeedback('Expert → Customer', expertFeedback)}
+                    </>
+                  )}
+                </View>
+              );
+            })
+          )}
         </View>
 
         {/* Payment Info */}
@@ -1349,6 +1520,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: THEME.colors.textSecondary,
   },
+  feedbackHelp: { marginTop: -6, marginBottom: 11, color: THEME.colors.textSecondary, fontSize: 12 },
+  feedbackCard: { marginBottom: 12, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: THEME.colors.border, backgroundColor: THEME.colors.surface },
+  feedbackBookingHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  feedbackBookingIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3E8FF' },
+  feedbackBookingCopy: { flex: 1, marginLeft: 10 },
+  feedbackBookingTitle: { color: THEME.colors.text, fontSize: 15, fontWeight: '800' },
+  feedbackBookingId: { marginTop: 2, color: THEME.colors.textMuted, fontSize: 10 },
+  feedbackSide: { paddingVertical: 4 },
+  feedbackSideHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  feedbackSideLabel: { color: THEME.colors.textSecondary, fontSize: 12, fontWeight: '800' },
+  feedbackStars: { flexDirection: 'row', gap: 2 },
+  feedbackChoices: { marginTop: 9, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  feedbackChoice: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: '#F3E8FF' },
+  feedbackChoiceText: { color: THEME.colors.primary, fontSize: 10, fontWeight: '700' },
+  feedbackComment: { marginTop: 9, color: THEME.colors.text, fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
+  feedbackEmpty: { marginTop: 5, color: THEME.colors.textMuted, fontSize: 11 },
+  feedbackDivider: { height: 1, marginVertical: 10, backgroundColor: THEME.colors.divider },
+  feedbackError: { paddingVertical: 9, color: THEME.colors.error, fontSize: 12 },
   spacer: {
     height: 120,
   },

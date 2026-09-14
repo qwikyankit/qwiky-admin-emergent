@@ -16,6 +16,7 @@ import Toast from '../components/Toast';
 import THEME from '../constants/theme';
 import {
   createHoodItem,
+  fetchHoodDetails,
   fetchHoodItems,
   fetchItems,
   fetchProducts,
@@ -35,6 +36,7 @@ export default function HoodItems() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
+  const [serviceableRadiusKm, setServiceableRadiusKm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [priceItem, setPriceItem] = useState(null);
@@ -58,12 +60,13 @@ export default function HoodItems() {
     if (!hoodId) return;
     try {
       setLoading(true);
-      const [data, itemData, productData, categoryData, subcategoryData] = await Promise.all([
+      const [data, itemData, productData, categoryData, subcategoryData, hood] = await Promise.all([
         fetchHoodItems(hoodId),
         fetchItems(),
         fetchProducts(),
         fetchCategories(),
         fetchSubcategories(),
+        fetchHoodDetails(hoodId),
       ]);
       setItems(
         [...(data || [])].sort(
@@ -74,6 +77,8 @@ export default function HoodItems() {
       setProducts(productData || []);
       setCategories(categoryData || []);
       setSubcategories(subcategoryData || []);
+      const radius = Number(hood?.serviceableRadiusKm);
+      setServiceableRadiusKm(Number.isFinite(radius) && radius > 0 ? radius : null);
     } catch (error) {
       showToast(getErrorMessage(error), 'error');
     } finally {
@@ -264,7 +269,7 @@ export default function HoodItems() {
             <View style={styles.emptyCard}>
               <Ionicons name="pricetags-outline" size={40} color={THEME.colors.textSecondary} />
               <Text style={styles.emptyTitle}>No hood items</Text>
-              <Text style={styles.emptyText}>Item creation can be added to this page next.</Text>
+              <Text style={styles.emptyText}>Add an item from the catalog to this hood.</Text>
             </View>
           )}
           {groupedItems.map(categoryGroup => (
@@ -334,6 +339,26 @@ export default function HoodItems() {
                     <Text style={styles.editButtonText}>Edit price</Text>
                   </TouchableOpacity>
                 </View>
+                <TouchableOpacity
+                  style={styles.distanceButton}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/distance-pricing',
+                      params: {
+                        hoodItemId: item.id,
+                        itemName: catalogItem.id
+                          ? productName(catalogItem)
+                          : item.productName || item.itemName || 'Service item',
+                        offerPrice: item.offerPrice ?? '',
+                        serviceableRadiusKm: serviceableRadiusKm ?? '',
+                      },
+                    })
+                  }
+                >
+                  <Ionicons name="navigate-outline" size={18} color={THEME.colors.primary} />
+                  <Text style={styles.distanceButtonText}>Manage distance pricing</Text>
+                  <Ionicons name="chevron-forward" size={18} color={THEME.colors.textSecondary} />
+                </TouchableOpacity>
               </View>
             );
                   })}
@@ -495,6 +520,8 @@ const styles = StyleSheet.create({
   savings: { marginTop: 2, color: '#166534', fontSize: 11, fontWeight: '700' },
   editButton: { height: 39, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#F3E8FF', flexDirection: 'row', alignItems: 'center', gap: 6 },
   editButtonText: { color: THEME.colors.primary, fontWeight: '800' },
+  distanceButton: { minHeight: 44, marginTop: 12, paddingHorizontal: 12, borderRadius: 11, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#FAF5FF', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  distanceButtonText: { flex: 1, color: THEME.colors.primary, fontWeight: '800' },
   overlay: { flex: 1, padding: 22, backgroundColor: 'rgba(15,23,42,0.5)', alignItems: 'center', justifyContent: 'center' },
   modalCard: { width: '100%', maxWidth: 400, padding: 20, borderRadius: 19, backgroundColor: '#FFF' },
   modalTitle: { fontSize: 19, fontWeight: '800', color: THEME.colors.text },

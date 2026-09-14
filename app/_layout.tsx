@@ -21,6 +21,8 @@ export default function RootLayout() {
         <Stack.Screen name="admin-settings" />
         <Stack.Screen name="catalog" />
         <Stack.Screen name="hood-management" />
+        <Stack.Screen name="feedback-options" />
+        <Stack.Screen name="distance-pricing" />
       </Stack>
     </SafeAreaProvider>
   );

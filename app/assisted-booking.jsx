@@ -286,6 +286,23 @@ const progressWidth = progressAnim.interpolate({
   outputRange: ['0%', '100%'],
 });
 
+const confirmedBooking =
+  bookingResponse?.booking ||
+  bookingResponse?.bookingDetailsResponse ||
+  bookingResponse;
+const assignedExpert =
+  confirmedBooking?.assignedExpert ||
+  confirmedBooking?.assignedExpertResponse ||
+  confirmedBooking?.expert ||
+  confirmedBooking?.bookings?.find(booking => booking?.assignedExpert)
+    ?.assignedExpert;
+const assignedExpertName =
+  assignedExpert?.expertName ||
+  assignedExpert?.name ||
+  assignedExpert?.userName ||
+  confirmedBooking?.assignedExpertName ||
+  confirmedBooking?.expertName;
+
 const stepLabels = {
   1: 'Find customer',
   2: 'Customer and address',
@@ -677,6 +694,10 @@ Your booking has been successfully created
 <Text>Date: {selectedDate.toDateString()}</Text>
 
 <Text>Time: {formatTime(selectedTimeSlot.start)}</Text>
+
+<Text>
+Assigned Expert: {assignedExpertName || 'Not assigned yet'}
+</Text>
 
 </View>
 

@@ -62,6 +62,10 @@ const isAuthenticationEndpoint = (url = '') =>
     url.includes(path),
   );
 
+// A missing/inaccessible feedback record must not invalidate the admin session.
+const isNonSessionUnauthorizedEndpoint = (url = '') =>
+  /\/bookings\/[^/?]+\/feedback(?:\?|$)/.test(url);
+
 const refreshAccessToken = async (): Promise<string> => {
   const refreshToken = await getRefreshToken();
 
@@ -145,6 +149,13 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       const originalRequest = error.config as any;
       const requestUrl = originalRequest?.url || '';
+
+      if (
+        originalRequest?.skipAuthFailureHandling ||
+        isNonSessionUnauthorizedEndpoint(requestUrl)
+      ) {
+        return Promise.reject(error);
+      }
 
       if (
         originalRequest &&
@@ -359,6 +370,15 @@ export const fetchBookings = async (
   return response.data;
 };
 
+// Feedback is always stored against an individual child booking.
+export const fetchBookingFeedback = async (bookingId: string) => {
+  const response = await apiClient.get(
+    `/bookings/${bookingId}/feedback`,
+    { skipAuthFailureHandling: true } as any,
+  );
+  return response.data;
+};
+
 // Fetch user details
 export const fetchUserDetails = async (userId: string) => {
   const response = await apiClient.get(`/admin/user/${userId}`);
@@ -488,6 +508,51 @@ export const updateHoodItem =
       payload,
     );
   };
+
+export const fetchDistancePriceRules = async hoodItemId => {
+  const response = await apiClient.get(`/hood-items/${hoodItemId}/distance-price-rules`);
+  return response.data;
+};
+
+export const createDistancePriceRule = async (hoodItemId, payload) => {
+  const response = await apiClient.post(
+    `/hood-items/${hoodItemId}/distance-price-rules`,
+    payload,
+  );
+  return response.data;
+};
+
+export const updateDistancePriceRule = async (hoodItemId, ruleId, payload) => {
+  const response = await apiClient.put(
+    `/hood-items/${hoodItemId}/distance-price-rules/${ruleId}`,
+    payload,
+  );
+  return response.data;
+};
+
+export const deleteDistancePriceRule = async (hoodItemId, ruleId) => {
+  await apiClient.delete(`/hood-items/${hoodItemId}/distance-price-rules/${ruleId}`);
+};
+
+export const fetchFeedbackOptions = async filters => {
+  const response = await apiClient.get('/admin/feedback-options', { params: filters });
+  return response.data;
+};
+
+export const createFeedbackOption = async payload => {
+  const response = await apiClient.post('/admin/feedback-options', payload);
+  return response.data;
+};
+
+export const updateFeedbackOption = async (ruleId, payload) => {
+  const response = await apiClient.patch(`/admin/feedback-options/${ruleId}`, payload);
+  return response.data;
+};
+
+export const updateFeedbackOptionStatus = async (ruleId, active) => {
+  const response = await apiClient.patch(`/admin/feedback-options/${ruleId}/status`, { active });
+  return response.data;
+};
 
 // ✅ Send Push Notification
 export const sendPushNotification = async ({

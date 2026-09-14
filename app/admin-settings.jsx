@@ -1,17 +1,40 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Toast from '../components/Toast';
 import THEME from '../constants/theme';
-import { logout, logoutAllDevices } from '../services/api';
+import { getUser, logout, logoutAllDevices } from '../services/api';
 
 export default function AdminSettings() {
   const router = useRouter();
   const [logoutVisible, setLogoutVisible] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
+  const [canManageFeedback, setCanManageFeedback] = useState(false);
+
+  useEffect(() => {
+    getUser().then(user => {
+      const rawRoles = [
+        ...(Array.isArray(user?.roles) ? user.roles : []),
+        ...(Array.isArray(user?.authorities) ? user.authorities : []),
+        ...(Array.isArray(user?.userRoles) ? user.userRoles : []),
+        user?.role,
+        user?.adminRole,
+        user?.userType,
+      ].filter(Boolean);
+      const roles = rawRoles.map(role =>
+        String(
+          role?.name || role?.role || role?.roleName || role?.authority || role?.code || role,
+        ).toUpperCase(),
+      );
+
+      // Older login responses did not include role metadata. Keep the entry
+      // discoverable in that case and let the protected API enforce access.
+      setCanManageFeedback(!rawRoles.length || roles.includes('SUPER_ADMIN'));
+    });
+  }, []);
 
   const handleLogout = async (allDevices = false) => {
     try {
@@ -35,6 +58,16 @@ export default function AdminSettings() {
   };
 
   const cards = [
+    ...(canManageFeedback
+      ? [
+          {
+            title: 'Feedback Options',
+            description: 'Configure rating choices for customer and expert feedback.',
+            icon: 'chatbox-ellipses-outline',
+            onPress: () => router.push('/feedback-options'),
+          },
+        ]
+      : []),
     {
       title: 'Catalog Management',
       description: 'Categories, subcategories, products and items.',
