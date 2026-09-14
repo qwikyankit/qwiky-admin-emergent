@@ -19,7 +19,7 @@ const API_BASE_URL =
 // Hardcoded Hood ID (as requested)
 const HOOD_ID =
   process.env.EXPO_PUBLIC_DEFAULT_HOOD_ID ||
-  '4dd4d3a6-c0b3-4042-8e01-5b9299273ee1';
+  '8bda0ec2-8a87-49e9-8dc4-8d4384cd856e';
 
 export const getFriendlyError = error => {
   const code = error?.friendlyMessage || "";
