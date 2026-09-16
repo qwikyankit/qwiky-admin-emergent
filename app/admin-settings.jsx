@@ -58,6 +58,12 @@ export default function AdminSettings() {
   };
 
   const cards = [
+    {
+      title: 'Expert Profiles',
+      description: 'Review expert ratings and manage profile and shift information.',
+      icon: 'people-outline',
+      onPress: () => router.push('/expert-profiles'),
+    },
     ...(canManageFeedback
       ? [
           {

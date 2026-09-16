@@ -1140,6 +1140,7 @@ const handleAddToCalendar = async () => {
                 child?.bookingCode ||
                 `Booking ${String(child?.bookingId || '').slice(0, 8)}`;
               const renderFeedback = (label, feedback) => {
+                const submitted = feedback?.submitted === true;
                 const rating = Number(feedback?.rating || 0);
                 const choices =
                   feedback?.optionLabels ||
@@ -1151,7 +1152,7 @@ const handleAddToCalendar = async () => {
                   <View style={styles.feedbackSide}>
                     <View style={styles.feedbackSideHeader}>
                       <Text style={styles.feedbackSideLabel}>{label}</Text>
-                      {rating > 0 && (
+                      {submitted && rating > 0 && (
                         <View style={styles.feedbackStars}>
                           {[1, 2, 3, 4, 5].map(value => (
                             <Ionicons
@@ -1164,7 +1165,7 @@ const handleAddToCalendar = async () => {
                         </View>
                       )}
                     </View>
-                    {rating > 0 ? (
+                    {submitted ? (
                       <>
                         {Array.isArray(choices) && choices.length > 0 && (
                           <View style={styles.feedbackChoices}>
@@ -1179,6 +1180,9 @@ const handleAddToCalendar = async () => {
                         )}
                         {!!feedback?.comment && (
                           <Text style={styles.feedbackComment}>“{feedback.comment}”</Text>
+                        )}
+                        {rating <= 0 && (
+                          <Text style={styles.feedbackEmpty}>Submitted</Text>
                         )}
                       </>
                     ) : (

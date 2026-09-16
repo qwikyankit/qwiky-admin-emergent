@@ -62,10 +62,6 @@ const isAuthenticationEndpoint = (url = '') =>
     url.includes(path),
   );
 
-// A missing/inaccessible feedback record must not invalidate the admin session.
-const isNonSessionUnauthorizedEndpoint = (url = '') =>
-  /\/bookings\/[^/?]+\/feedback(?:\?|$)/.test(url);
-
 const refreshAccessToken = async (): Promise<string> => {
   const refreshToken = await getRefreshToken();
 
@@ -149,13 +145,6 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       const originalRequest = error.config as any;
       const requestUrl = originalRequest?.url || '';
-
-      if (
-        originalRequest?.skipAuthFailureHandling ||
-        isNonSessionUnauthorizedEndpoint(requestUrl)
-      ) {
-        return Promise.reject(error);
-      }
 
       if (
         originalRequest &&
@@ -372,9 +361,17 @@ export const fetchBookings = async (
 
 // Feedback is always stored against an individual child booking.
 export const fetchBookingFeedback = async (bookingId: string) => {
+  const response = await apiClient.get(`/admin/bookings/${bookingId}/feedback`);
+  return response.data;
+};
+
+export const fetchAdminFeedbackWeightage = async (
+  userId: string,
+  revieweeType: 'EXPERT' | 'CUSTOMER',
+) => {
   const response = await apiClient.get(
-    `/bookings/${bookingId}/feedback`,
-    { skipAuthFailureHandling: true } as any,
+    `/admin/users/${userId}/feedback-weightage`,
+    { params: { revieweeType } },
   );
   return response.data;
 };

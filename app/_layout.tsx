@@ -16,6 +16,7 @@ export default function RootLayout() {
         <Stack.Screen name="booking/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="experts" />
+        <Stack.Screen name="expert-profiles" />
         <Stack.Screen name="operating-hours" />
         <Stack.Screen name="hood-items" />
         <Stack.Screen name="admin-settings" />

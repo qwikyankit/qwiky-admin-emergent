@@ -113,6 +113,10 @@ export default function Experts() {
   const params = useLocalSearchParams();
   const hoodId = Array.isArray(params.hoodId) ? params.hoodId[0] : params.hoodId;
   const hoodName = Array.isArray(params.hoodName) ? params.hoodName[0] : params.hoodName;
+  const requestedExpertUserId = Array.isArray(params.expertUserId)
+    ? params.expertUserId[0]
+    : params.expertUserId;
+  const requestedProfileOpened = React.useRef(false);
   const [experts, setExperts] = useState([]);
   const [hoods, setHoods] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -163,6 +167,7 @@ export default function Experts() {
       setCategories((categoryData || []).filter(item => item.status === 'ACTIVE'));
       setSubcategories((subcategoryData || []).filter(item => item.status === 'ACTIVE'));
       setHoodDefaultHours(normalizeHoodHours(hoodDetails));
+
     } catch (error) {
       showToast(getErrorMessage(error), 'error');
     } finally {
@@ -185,6 +190,19 @@ export default function Experts() {
     setDraft(normalizeExpert(expert, hoodId, hoodDefaultHours));
     setEditorVisible(true);
   };
+
+  useEffect(() => {
+    if (!requestedExpertUserId || requestedProfileOpened.current || !experts.length) return;
+    const requestedExpert = experts.find(
+      expert => String(expert.userId || expert.id) === String(requestedExpertUserId),
+    );
+    if (requestedExpert) {
+      requestedProfileOpened.current = true;
+      setEditing(true);
+      setDraft(normalizeExpert(requestedExpert, hoodId, hoodDefaultHours));
+      setEditorVisible(true);
+    }
+  }, [experts, requestedExpertUserId, hoodId, hoodDefaultHours]);
 
   const updateExpertise = (index, field, value) => {
     setDraft(current => ({
