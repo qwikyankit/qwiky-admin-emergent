@@ -29,6 +29,7 @@ import NewBookingBanner from '../components/NewBookingBanner';
 import { 
   isLoggedIn,
   fetchBookings,  
+  fetchUserDetails,
   fetchHoodExperts,
   fetchHoodItems,
   fetchHoods,
@@ -49,6 +50,8 @@ export default function Home() {
   useState(true);
   const [bookings, setBookings] = useState<any[]>([]);
   const [filteredBookings, setFilteredBookings] = useState<any[]>([]);
+  const [bookingUsers, setBookingUsers] = useState<Record<string, any>>({});
+  const requestedUserIds = useRef(new Set<string>());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -104,6 +107,31 @@ const {
   onDateChange,
   applyWebDates
 } = useDateRangePicker();
+
+  const loadBookingUsers = async (bookingList: any[]) => {
+    const userIds = [
+      ...new Set(
+        bookingList
+          .map(booking => booking?.userId)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    ].filter(userId => !requestedUserIds.current.has(userId));
+
+    if (!userIds.length) return;
+    userIds.forEach(userId => requestedUserIds.current.add(userId));
+
+    const results = await Promise.all(
+      userIds.map(async userId => {
+        try {
+          return [userId, await fetchUserDetails(userId)] as const;
+        } catch {
+          requestedUserIds.current.delete(userId);
+          return [userId, null] as const;
+        }
+      }),
+    );
+    setBookingUsers(current => ({ ...current, ...Object.fromEntries(results) }));
+  };
 
   // Handle Android back button
   useEffect(() => {
@@ -248,6 +276,7 @@ const loadHoods = async () => {
       PAGE_SIZE
     );  
     const bookingsList = data?._embedded?.bookingDetailsResponses || [];
+    void loadBookingUsers(bookingsList);
     const pageInfo = data?.page || {};
     const total = pageInfo.totalPages ?? 0;
       setTotalPages(pageInfo.totalPages || 0);
@@ -841,7 +870,9 @@ Showing {filteredBookings.length} of {totalElements} bookings
               <BookingCard
                 key={`${booking.bookingId || booking.bookingCode || index}-${booking.services?.[0]?.slotStart || 'no-slot'}-${booking.services?.[0]?.slotEnd || 'no-end'}`}
                 booking={booking}
+                user={bookingUsers[booking.userId]}
                 onPress={() => handleBookingPress(booking)}
+                onCopy={message => showToast(message, 'success')}
               />
             ))}
             

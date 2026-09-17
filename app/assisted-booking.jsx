@@ -39,6 +39,7 @@ const [mobile,setMobile] = useState('');
 const [user,setUser] = useState(null);
 const [addresses,setAddresses] = useState([]);
 const [selectedAddress,setSelectedAddress] = useState(null);
+const [useManualAddress,setUseManualAddress] = useState(false);
 
 const [newUser,setNewUser] = useState({name:'',email:''});
 
@@ -87,6 +88,8 @@ const res = await validateUserByMobile(mobile);
 if(res?.id){
 setUser(res);
 setAddresses(res.addresses || []);
+setUseManualAddress(false);
+setSelectedAddress(null);
 }
 
 }catch(err){
@@ -94,6 +97,7 @@ setAddresses(res.addresses || []);
 if(err?.response?.status===400){
 setUser(null);
 setAddresses([]);
+setUseManualAddress(true);
 }else{
 Alert.alert('Error','User validation failed');
 }
@@ -107,8 +111,16 @@ goToStep(2);
 
 const loadItems = async()=>{
 
-if(user && addresses.length>0 && !selectedAddress){
+if(user && addresses.length>0 && !useManualAddress && !selectedAddress){
 return Alert.alert('Select address');
+}
+
+if(
+  (!user || addresses.length===0 || useManualAddress) &&
+  (!newAddress.line1.trim() || !newAddress.city.trim() ||
+    !newAddress.state.trim() || !newAddress.pinCode.trim())
+){
+return Alert.alert('Complete address','Enter address, city, state and PIN code');
 }
 
 try{
@@ -195,7 +207,7 @@ if(user){
 
 body.userId=user.id;
 
-if(addresses.length>0){
+if(addresses.length>0 && !useManualAddress){
 body.addressId=selectedAddress;
 }else{
 body.addressRequest=newAddress;
@@ -269,6 +281,17 @@ setMobile('');
 setUser(null);
 setAddresses([]);
 setSelectedAddress(null);
+setUseManualAddress(false);
+setNewUser({name:'',email:''});
+setNewAddress({
+line1:'',
+line2:'',
+city:'',
+state:'',
+pinCode:'',
+title:'Home',
+isDefault:true
+});
 
 setSelectedItem(null);
 setSelectedTimeSlot(null);
@@ -386,7 +409,7 @@ onChangeText={(value)=>setMobile(value.replace(/\D/g,'').slice(0,10))}
 
 <>
 
-{user && addresses.length>0 &&(
+{user && addresses.length>0 && !useManualAddress &&(
 
 <>
 <Text style={styles.title}>Select Address</Text>
@@ -422,7 +445,26 @@ onPress={()=>setSelectedAddress(addr.id)}
 
 )}
 
-{(!user || addresses.length===0) &&(
+{user && addresses.length>0 && (
+<TouchableOpacity
+style={styles.manualAddressButton}
+onPress={()=>{
+setUseManualAddress(current=>!current);
+setSelectedAddress(null);
+}}
+>
+<Ionicons
+name={useManualAddress?'list-outline':'add-circle-outline'}
+size={19}
+color={THEME.colors.primary}
+/>
+<Text style={styles.manualAddressText}>
+{useManualAddress?'Choose a saved address':'Enter a new address manually'}
+</Text>
+</TouchableOpacity>
+)}
+
+{(!user || addresses.length===0 || useManualAddress) &&(
 
 <>
 
@@ -740,6 +782,9 @@ helper:{marginBottom:18,color:THEME.colors.textSecondary,lineHeight:20},
 fieldLabel:{marginBottom:7,color:THEME.colors.textSecondary,fontSize:12,fontWeight:'800'},
 
 title:{fontSize:18,fontWeight:'800',marginTop:22,marginBottom:12,color:THEME.colors.text},
+
+manualAddressButton:{minHeight:48,marginTop:8,paddingHorizontal:14,borderWidth:1,borderColor:THEME.colors.primary,borderRadius:13,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:'#FAF5FF'},
+manualAddressText:{color:THEME.colors.primary,fontWeight:'800'},
 
 input:{
 borderWidth:1,

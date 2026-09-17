@@ -1,11 +1,12 @@
 import React from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import StatusBadge from './StatusBadge';
 import { formatIndiaDate, formatIndiaDateTime, formatTime12Hour } from '../utils/helpers';
 import THEME from '../constants/theme';
 
-const BookingCard = ({ booking, onPress }) => {
+const BookingCard = ({ booking, user, onPress, onCopy }) => {
   const service = booking?.services?.[0];
   const slotStart = service?.slotStart;
   const slotEnd = service?.slotEnd;
@@ -33,6 +34,51 @@ const BookingCard = ({ booking, onPress }) => {
   };
 
   const createdAt = formatCreatedAt(booking?.createdAt);
+  const address =
+    booking?.bookingAddress ||
+    user?.address ||
+    user?.addresses?.find(item => item.isDefault) ||
+    user?.addresses?.[0];
+  const customerName = user?.name || user?.userName || booking?.userName;
+  const phoneNumber =
+    user?.mobileNumber || user?.phoneNumber || user?.phone || booking?.phone;
+  const countryCode = user?.countryCode || booking?.countryCode || '91';
+  const displayPhone = phoneNumber
+    ? `+${String(countryCode).replace(/^\+/, '')} ${phoneNumber}`
+    : '';
+  const addressText = address
+    ? [
+        address.addressLine1 || address.line1,
+        address.addressLine2 || address.line2,
+        address.locality,
+        [address.city, address.state, address.pincode || address.pinCode]
+          .filter(Boolean)
+          .join(', '),
+      ]
+        .filter(Boolean)
+        .join(', ')
+    : '';
+  const hasCoordinates =
+    address?.latitude !== undefined &&
+    address?.latitude !== null &&
+    address?.longitude !== undefined &&
+    address?.longitude !== null;
+  const coordinates = hasCoordinates ? `${address.latitude}, ${address.longitude}` : '';
+
+  const stopCardPress = event => event?.stopPropagation?.();
+
+  const copyValue = async (event, value, successMessage) => {
+    stopCardPress(event);
+    if (value) {
+      await Clipboard.setStringAsync(value);
+      onCopy?.(successMessage);
+    }
+  };
+
+  const callCustomer = event => {
+    stopCardPress(event);
+    if (phoneNumber) Linking.openURL(`tel:${phoneNumber}`);
+  };
 
   return (
     <TouchableOpacity
@@ -63,18 +109,68 @@ const BookingCard = ({ booking, onPress }) => {
         <Text style={styles.amount}>{formatAmount(amount)}</Text>
       </View>
 
-      <View style={styles.scheduleCard}>
-        <View style={styles.scheduleIcon}>
-          <Ionicons name="calendar-outline" size={19} color={THEME.colors.primary} />
+      <View style={styles.detailsPanel}>
+        <View style={styles.scheduleRow}>
+          <View style={styles.detailIcon}>
+            <Ionicons name="calendar-outline" size={17} color={THEME.colors.primary} />
+          </View>
+          <View style={styles.scheduleCopy}>
+            <Text style={styles.slotDate}>{slotStart ? formatIndiaDate(slotStart) : 'Schedule unavailable'}</Text>
+            <Text style={styles.slotTime}>
+              {slotStart
+                ? `${formatTime12Hour(slotStart)} – ${formatTime12Hour(slotEnd)}`
+                : 'Time unavailable'}
+            </Text>
+          </View>
         </View>
-        <View style={styles.scheduleCopy}>
-          <Text style={styles.slotDate}>{slotStart ? formatIndiaDate(slotStart) : 'Schedule unavailable'}</Text>
-          <Text style={styles.slotTime}>
-            {slotStart
-              ? `${formatTime12Hour(slotStart)} – ${formatTime12Hour(slotEnd)}`
-              : 'Time unavailable'}
-          </Text>
-        </View>
+
+        {(customerName || displayPhone || addressText || coordinates) && (
+          <View style={styles.customerSection}>
+            <View style={styles.customerHeader}>
+              <View style={styles.detailIcon}>
+                <Ionicons name="person-outline" size={17} color={THEME.colors.primary} />
+              </View>
+              <Text style={styles.customerTitle}>{customerName || 'Customer'}</Text>
+            </View>
+
+            {!!displayPhone && (
+              <View style={styles.detailRow}>
+                <Ionicons name="call-outline" size={14} color={THEME.colors.textMuted} />
+                <TouchableOpacity style={styles.detailValue} onPress={callCustomer}>
+                  <Text style={styles.phoneText}>{displayPhone}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.copyButton}
+                  onPress={event => copyValue(event, displayPhone, 'Mobile number copied')}
+                  accessibilityLabel="Copy customer phone number"
+                >
+                  <Ionicons name="copy-outline" size={15} color={THEME.colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!!addressText && (
+              <View style={styles.detailRow}>
+                <Ionicons name="location-outline" size={15} color={THEME.colors.textMuted} />
+                <Text style={styles.addressText} numberOfLines={2}>{addressText}</Text>
+              </View>
+            )}
+
+            {!!coordinates && (
+              <View style={styles.detailRow}>
+                <Ionicons name="navigate-outline" size={14} color={THEME.colors.textMuted} />
+                <Text style={styles.coordinateText} numberOfLines={1}>{coordinates}</Text>
+                <TouchableOpacity
+                  style={styles.copyButton}
+                  onPress={event => copyValue(event, coordinates, 'Coordinates copied')}
+                  accessibilityLabel="Copy booking coordinates"
+                >
+                  <Ionicons name="copy-outline" size={15} color={THEME.colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
       </View>
 
       <View style={styles.footer}>
@@ -121,11 +217,21 @@ const styles = StyleSheet.create({
   serviceLabel: { color: THEME.colors.textMuted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7 },
   serviceName: { marginTop: 4, color: THEME.colors.text, fontSize: 17, fontWeight: '800' },
   amount: { color: THEME.colors.settled, fontSize: 19, fontWeight: '900' },
-  scheduleCard: { minHeight: 63, marginTop: 14, padding: 11, borderRadius: 13, backgroundColor: '#F8F7FC', flexDirection: 'row', alignItems: 'center' },
-  scheduleIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  detailsPanel: { marginTop: 12, paddingHorizontal: 11, borderRadius: 13, backgroundColor: '#F8F7FC', borderWidth: 1, borderColor: '#F0EDF5' },
+  scheduleRow: { minHeight: 57, flexDirection: 'row', alignItems: 'center' },
+  detailIcon: { width: 32, height: 32, borderRadius: 9, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   scheduleCopy: { flex: 1, marginLeft: 10 },
   slotDate: { color: THEME.colors.text, fontSize: 12, fontWeight: '800' },
   slotTime: { marginTop: 3, color: THEME.colors.primary, fontSize: 12, fontWeight: '700' },
+  customerSection: { paddingTop: 9, paddingBottom: 8, borderTopWidth: 1, borderTopColor: '#E9E5F0' },
+  customerHeader: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 2 },
+  customerTitle: { flex: 1, color: THEME.colors.text, fontSize: 13, fontWeight: '800' },
+  detailRow: { minHeight: 27, marginLeft: 7, paddingLeft: 34, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  detailValue: { flex: 1 },
+  phoneText: { color: THEME.colors.primary, fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
+  addressText: { flex: 1, color: THEME.colors.textSecondary, fontSize: 11, lineHeight: 16 },
+  coordinateText: { flex: 1, color: THEME.colors.textSecondary, fontSize: 11, fontWeight: '700' },
+  copyButton: { width: 27, height: 27, borderRadius: 8, backgroundColor: '#F3E8FF', alignItems: 'center', justifyContent: 'center' },
   footer: { marginTop: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   createdMeta: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5 },
   createdText: { flex: 1, color: THEME.colors.textMuted, fontSize: 10, fontWeight: '600' },
