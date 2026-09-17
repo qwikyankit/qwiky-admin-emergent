@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -34,6 +34,35 @@ const BookingCard = ({ booking, user, onPress, onCopy }) => {
   };
 
   const createdAt = formatCreatedAt(booking?.createdAt);
+  const isInProgress = String(booking?.status || '').toUpperCase() === 'IN_PROGRESS';
+  const expectedEndTime = booking?.bookingSessionResponse?.expectedBookingEndTime;
+  const [remainingTime, setRemainingTime] = useState('');
+
+  useEffect(() => {
+    if (!isInProgress || !expectedEndTime) {
+      setRemainingTime('');
+      return undefined;
+    }
+
+    const updateRemainingTime = () => {
+      const diff = new Date(expectedEndTime).getTime() - Date.now();
+      if (!Number.isFinite(diff) || diff <= 0) {
+        setRemainingTime('00:00:00');
+        return;
+      }
+      const totalSeconds = Math.floor(diff / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      setRemainingTime(
+        `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`,
+      );
+    };
+
+    updateRemainingTime();
+    const interval = setInterval(updateRemainingTime, 1000);
+    return () => clearInterval(interval);
+  }, [isInProgress, expectedEndTime]);
   const address =
     booking?.bookingAddress ||
     user?.address ||
@@ -98,7 +127,15 @@ const BookingCard = ({ booking, user, onPress, onCopy }) => {
             <Text style={styles.bookingCode}>{booking?.bookingCode || 'Booking'}</Text>
           </View>
         </View>
-        <StatusBadge status={booking?.status} />
+        <View style={styles.statusArea}>
+          {!!remainingTime && (
+            <View style={styles.timerBadge}>
+              <Ionicons name="time-outline" size={13} color="#FFF" />
+              <Text style={styles.timerText}>{remainingTime}</Text>
+            </View>
+          )}
+          <StatusBadge status={booking?.status} />
+        </View>
       </View>
 
       <View style={styles.serviceArea}>
@@ -212,6 +249,9 @@ const styles = StyleSheet.create({
   receiptIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F3E8FF', alignItems: 'center', justifyContent: 'center' },
   codeCopy: { flex: 1, marginLeft: 10 },
   bookingCode: { color: THEME.colors.text, fontSize: 15, fontWeight: '800' },
+  statusArea: { marginLeft: 8, alignItems: 'flex-end', gap: 6 },
+  timerBadge: { minHeight: 27, paddingHorizontal: 9, borderRadius: 14, backgroundColor: '#F97316', flexDirection: 'row', alignItems: 'center', gap: 5 },
+  timerText: { color: '#FFF', fontSize: 11, fontWeight: '900', fontVariant: ['tabular-nums'] },
   serviceArea: { marginTop: 15, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   serviceCopy: { flex: 1, paddingRight: 12 },
   serviceLabel: { color: THEME.colors.textMuted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7 },
