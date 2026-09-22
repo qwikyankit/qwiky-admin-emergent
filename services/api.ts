@@ -365,6 +365,21 @@ export const fetchBookingFeedback = async (bookingId: string) => {
   return response.data;
 };
 
+export const addCustomerFeedback = async (
+  bookingId: string,
+  payload: {
+    rating: number;
+    optionCodes?: string[];
+    comment?: string;
+  },
+) => {
+  const response = await apiClient.post(
+    `/admin/bookings/${bookingId}/feedback/CUSTOMER`,
+    payload,
+  );
+  return response.data;
+};
+
 export const fetchAdminFeedbackWeightage = async (
   userId: string,
   revieweeType: 'EXPERT' | 'CUSTOMER',
@@ -483,6 +498,11 @@ export const getErrorMessage = (error: any): string => {
 // ✅ Fetch Experts (Hood Experts)
 export const fetchHoodExperts = async (hoodId) => {
   const res = await apiClient.get(`/hood-users/hood/${hoodId}`);
+  return res.data;
+};
+
+export const reassignExpert = async (bookingId: string, expertUserId: string) => {
+  const res = await apiClient.post(`/admin/bookings/${bookingId}/reassign/${expertUserId}`);
   return res.data;
 };
 

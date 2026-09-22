@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   Platform,
   BackHandler,
   Linking,
-  Share
+  Share,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +20,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import StatusBadge from '../../components/StatusBadge';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import Toast from '../../components/Toast';
-import { fetchUserDetails, fetchBookings, fetchBookingFeedback, cancelBooking, settleBooking, getErrorMessage, fetchHoodExperts, assignExpert } from '../../services/api';
+import { addCustomerFeedback, fetchUserDetails, fetchBookings, fetchBookingFeedback, cancelBooking, settleBooking, getErrorMessage, fetchFeedbackOptions, fetchHoodExperts, assignExpert, reassignExpert } from '../../services/api';
 import { createCalendarEvent, formatIndiaDateTime, formatTime12Hour, getRemainingTime, getServiceEndTime } from '../../utils/helpers';
 import THEME from '../../constants/theme';
 
@@ -34,6 +36,31 @@ const DAY_INDEX_BY_NAME = {
 
 const isClosedValue = value =>
   value === true || String(value).toLowerCase() === 'true';
+
+const getAssignedExpert = (bookingValue: any) => {
+  if (!bookingValue) return null;
+  const assigned =
+    bookingValue.assignedExpert ||
+    bookingValue.assignedExpertResponse ||
+    bookingValue.expert ||
+    {};
+  const id =
+    assigned.expertId ||
+    assigned.id ||
+    assigned.userId ||
+    assigned.expertUserId ||
+    bookingValue.assignedExpertId ||
+    bookingValue.expertId;
+  const name =
+    assigned.expertName ||
+    assigned.name ||
+    assigned.fullName ||
+    assigned.userName ||
+    assigned.user?.name ||
+    bookingValue.assignedExpertName ||
+    bookingValue.expertName;
+  return id || name ? { id: id || '', name: name || 'Assigned expert' } : null;
+};
 
 const getIndiaSlotParts = value => {
   if (!value) return null;
@@ -148,6 +175,14 @@ export default function BookingDetail() {
   const [feedbackBookings, setFeedbackBookings] = useState<any[]>([]);
   const [bookingFeedback, setBookingFeedback] = useState<any[]>([]);
   const [loadingFeedback, setLoadingFeedback] = useState(false);
+  const [feedbackTarget, setFeedbackTarget] = useState<any>(null);
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackOptionCodes, setFeedbackOptionCodes] = useState<string[]>([]);
+  const [feedbackOptions, setFeedbackOptions] = useState<any[]>([]);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [loadingFeedbackOptions, setLoadingFeedbackOptions] = useState(false);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackFormError, setFeedbackFormError] = useState('');
   const [user, setUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -156,11 +191,14 @@ export default function BookingDetail() {
     type: 'settle' | 'cancel' | null;
   }>({ visible: false, type: null });
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as const });
-  const [experts, setExperts] = useState([]);
-const [selectedExpert, setSelectedExpert] = useState(null);
+  const [experts, setExperts] = useState<{ id: string; name: string }[]>([]);
+const [selectedExpert, setSelectedExpert] = useState<{ id: string; name: string } | null>(null);
 const [loadingExperts, setLoadingExperts] = useState(false);
 const [assigning, setAssigning] = useState(false);
-const [showReassign, setShowReassign] = useState(false);
+const [showExpertPicker, setShowExpertPicker] = useState(false);
+const [pendingExpert, setPendingExpert] = useState<{ id: string; name: string } | null>(null);
+const assignmentInFlight = useRef(false);
+const [expertError, setExpertError] = useState('');
 const [remainingTime, setRemainingTime] = useState('');
 
   // Handle Android back button
@@ -275,17 +313,113 @@ const [remainingTime, setRemainingTime] = useState('');
     };
   }, [feedbackBookings]);
 
+  useEffect(() => {
+    let active = true;
+    const loadOptions = async () => {
+      if (!feedbackTarget || !feedbackRating) {
+        setFeedbackOptions([]);
+        return;
+      }
+      try {
+        setLoadingFeedbackOptions(true);
+        setFeedbackFormError('');
+        const options = await fetchFeedbackOptions({
+          reviewerType: 'CUSTOMER',
+          revieweeType: 'EXPERT',
+          rating: feedbackRating,
+          active: true,
+        });
+        if (active) setFeedbackOptions(options || []);
+      } catch (error) {
+        if (active) {
+          setFeedbackOptions([]);
+          setFeedbackFormError(getErrorMessage(error));
+        }
+      } finally {
+        if (active) setLoadingFeedbackOptions(false);
+      }
+    };
+    loadOptions();
+    return () => {
+      active = false;
+    };
+  }, [feedbackTarget, feedbackRating]);
+
+  const openCustomerFeedback = (result: any) => {
+    setFeedbackTarget(result);
+    setFeedbackRating(0);
+    setFeedbackOptionCodes([]);
+    setFeedbackOptions([]);
+    setFeedbackComment('');
+    setFeedbackFormError('');
+  };
+
+  const closeCustomerFeedback = () => {
+    if (submittingFeedback) return;
+    setFeedbackTarget(null);
+    setFeedbackFormError('');
+  };
+
+  const replaceCustomerFeedback = (bookingId: string, customerFeedback: any) => {
+    setBookingFeedback(current =>
+      current.map(result =>
+        result.booking?.bookingId === bookingId
+          ? {
+              ...result,
+              available: true,
+              feedback: { ...result.feedback, customerFeedback },
+            }
+          : result,
+      ),
+    );
+  };
+
+  const submitCustomerFeedback = async () => {
+    const bookingId = feedbackTarget?.booking?.bookingId;
+    if (!bookingId || submittingFeedback) return;
+    if (!feedbackRating) {
+      setFeedbackFormError('Select a rating from 1 to 5.');
+      return;
+    }
+    try {
+      setSubmittingFeedback(true);
+      setFeedbackFormError('');
+      const customerFeedback = await addCustomerFeedback(bookingId, {
+        rating: feedbackRating,
+        optionCodes: feedbackOptionCodes,
+        comment: feedbackComment.trim(),
+      });
+      replaceCustomerFeedback(bookingId, customerFeedback);
+      setFeedbackTarget(null);
+      showToast('Customer feedback added', 'success');
+    } catch (error: any) {
+      const status = error?.apiStatus || error?.response?.status;
+      if (status === 409) {
+        try {
+          const feedback = await fetchBookingFeedback(bookingId);
+          setBookingFeedback(current =>
+            current.map(result =>
+              result.booking?.bookingId === bookingId
+                ? { ...result, available: true, feedback }
+                : result,
+            ),
+          );
+          setFeedbackTarget(null);
+          showToast('Customer feedback already exists. Showing the saved feedback.', 'info');
+        } catch (refreshError) {
+          setFeedbackFormError(getErrorMessage(refreshError));
+        }
+      } else {
+        setFeedbackFormError(getErrorMessage(error));
+      }
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
 
 useEffect(() => {
-  if (booking?.hoodId) {
-    loadExperts(booking.hoodId);
-  }
-   if (booking?.assignedExpert) {
-    setSelectedExpert({
-      id: booking.assignedExpert.expertId,
-      name: booking.assignedExpert.expertName
-    });
-  }
+  setSelectedExpert(getAssignedExpert(booking));
 }, [booking]);
 
 useEffect(() => {
@@ -363,6 +497,8 @@ useEffect(() => {
 const loadExperts = async (hoodId) => {
   try {
     setLoadingExperts(true);
+    setExperts([]);
+    setExpertError('');
 
     const data = await fetchHoodExperts(hoodId);
 
@@ -380,47 +516,63 @@ const loadExperts = async (hoodId) => {
       }));
 
     // ✅ Remove already assigned expert
+    const assignedExpert = getAssignedExpert(booking);
     const unique = normalized.filter(
-      (e) => e.id !== booking?.assignedExpert?.expertId
+      (e) => e.id && e.id !== assignedExpert?.id
     );
 
     setExperts(unique);
 
   } catch (err) {
     console.error('Failed to fetch experts', err);
-    showToast('Failed to load experts', 'error');
+    setExpertError('Unable to load available experts. Please retry.');
   } finally {
     setLoadingExperts(false);
   }
 };
   
-  const handleAssignExpert = async (expert) => {
-  if (!booking?.bookingId || !expert?.id) return;
+  const openExpertPicker = () => {
+    setPendingExpert(null);
+    setExpertError('');
+    setShowExpertPicker(true);
+    loadExperts(booking.hoodId);
+  };
 
-  // 🔥 Already assigned → reassign flow
-  if (selectedExpert?.id === expert.id) return; // already selected
-
-if (selectedExpert && selectedExpert.id !== expert.id) {
-  setShowReassign(true);
-  return;
-}
-
-  try {
-    setAssigning(true);
-
-    await assignExpert(booking.bookingId, expert.id);
-
-    setSelectedExpert(expert);
-    await refreshCurrentBooking();
-
-    showToast(`${expert.name} assigned`, 'success');
-
-  } catch (err) {
-    showToast(getErrorMessage(err), 'error');
-  } finally {
-    setAssigning(false);
-  }
-};
+  const handleAssignExpert = async () => {
+    const assignedExpert = getAssignedExpert(booking);
+    if (assignmentInFlight.current || assigning || loadingExperts || !pendingExpert?.id ||
+        booking?.status?.toUpperCase() !== 'CONFIRMED' ||
+        pendingExpert.id === assignedExpert?.id) return;
+    assignmentInFlight.current = true;
+    const replacing = Boolean(assignedExpert?.id || assignedExpert?.name);
+    try {
+      setAssigning(true);
+      setExpertError('');
+      const nextExpert = pendingExpert;
+      await (replacing ? reassignExpert : assignExpert)(booking.bookingId, nextExpert.id);
+      // The mutation has succeeded even if the following refresh is unavailable.
+      setBooking((current: any) => ({ ...current, assignedExpert: {
+        expertId: nextExpert.id, expertName: nextExpert.name,
+      } }));
+      setShowExpertPicker(false);
+      setPendingExpert(null);
+      await refreshCurrentBooking();
+      // Keep the successful assignment visible if the list endpoint is briefly stale.
+      setBooking((current: any) => ({ ...current, assignedExpert: {
+        expertId: nextExpert.id, expertName: nextExpert.name,
+      } }));
+      showToast(`${nextExpert.name} ${replacing ? 'reassigned' : 'assigned'}`, 'success');
+    } catch (err: any) {
+      setExpertError(getErrorMessage(err));
+      if ([400, 403, 404, 409].includes(err?.apiStatus || err?.response?.status)) {
+        setPendingExpert(null);
+        await refreshCurrentBooking();
+      }
+    } finally {
+      assignmentInFlight.current = false;
+      setAssigning(false);
+    }
+  };
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -676,19 +828,180 @@ const handleAddToCalendar = async () => {
         onCancel={() => setConfirmModal({ visible: false, type: null })}
         loading={actionLoading}
       />
-<ConfirmationModal
-  visible={showReassign}
-  title="Reassign Expert?"
-  message="This booking already has an assigned expert. Do you want to reassign?"
-  confirmText="Reassign"
-  confirmColor={THEME.colors.primary}
-  icon="swap-horizontal"
-  onConfirm={() => {
-    setShowReassign(false);
-    showToast('Reassign flow will be enabled soon', 'info');
-  }}
-  onCancel={() => setShowReassign(false)}
-/>
+      <Modal
+        visible={feedbackTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeCustomerFeedback}
+      >
+        <View style={styles.expertOverlay}>
+          <View style={styles.feedbackDialog}>
+            <Text style={styles.feedbackDialogTitle}>Add customer feedback</Text>
+            <Text style={styles.feedbackDialogDescription}>
+              Record feedback collected from the customer. Once saved, it cannot be edited by an administrator.
+            </Text>
+
+            <Text style={styles.feedbackFieldLabel}>Rating</Text>
+            <View style={styles.feedbackRatingPicker}>
+              {[1, 2, 3, 4, 5].map(value => (
+                <TouchableOpacity
+                  key={value}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${value} star${value === 1 ? '' : 's'}`}
+                  accessibilityState={{ checked: feedbackRating === value }}
+                  disabled={submittingFeedback}
+                  onPress={() => {
+                    setFeedbackRating(value);
+                    setFeedbackOptionCodes([]);
+                  }}
+                  style={[
+                    styles.feedbackRatingButton,
+                    feedbackRating === value && styles.feedbackRatingButtonActive,
+                  ]}
+                >
+                  <Ionicons
+                    name={feedbackRating === value ? 'star' : 'star-outline'}
+                    size={20}
+                    color={feedbackRating === value ? '#FFF' : THEME.colors.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.feedbackRatingText,
+                      feedbackRating === value && styles.feedbackRatingTextActive,
+                    ]}
+                  >
+                    {value}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {feedbackRating > 0 && (
+              <>
+                <Text style={styles.feedbackFieldLabel}>Feedback options</Text>
+                {loadingFeedbackOptions ? (
+                  <ActivityIndicator color={THEME.colors.primary} />
+                ) : feedbackOptions.length ? (
+                  <View style={styles.feedbackOptionPicker}>
+                    {feedbackOptions.map(option => {
+                      const selected = feedbackOptionCodes.includes(option.code);
+                      return (
+                        <TouchableOpacity
+                          key={option.id || option.code}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: selected }}
+                          disabled={submittingFeedback}
+                          onPress={() =>
+                            setFeedbackOptionCodes(current =>
+                              selected
+                                ? current.filter(code => code !== option.code)
+                                : [...current, option.code],
+                            )
+                          }
+                          style={[
+                            styles.feedbackOptionButton,
+                            selected && styles.feedbackOptionButtonActive,
+                          ]}
+                        >
+                          <Ionicons
+                            name={selected ? 'checkbox' : 'square-outline'}
+                            size={17}
+                            color={selected ? THEME.colors.primary : THEME.colors.textMuted}
+                          />
+                          <Text style={styles.feedbackOptionButtonText}>{option.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.feedbackEmpty}>No options configured for this rating.</Text>
+                )}
+              </>
+            )}
+
+            <Text style={styles.feedbackFieldLabel}>Comment</Text>
+            <TextInput
+              multiline
+              maxLength={2000}
+              editable={!submittingFeedback}
+              value={feedbackComment}
+              onChangeText={setFeedbackComment}
+              placeholder="Feedback collected over call"
+              placeholderTextColor={THEME.colors.textMuted}
+              style={styles.feedbackCommentInput}
+            />
+            <Text style={styles.feedbackCharacterCount}>{feedbackComment.length}/2000</Text>
+
+            {!!feedbackFormError && (
+              <Text accessibilityRole="alert" style={styles.feedbackError}>
+                {feedbackFormError}
+              </Text>
+            )}
+
+            <View style={styles.feedbackDialogActions}>
+              <TouchableOpacity
+                disabled={submittingFeedback}
+                onPress={closeCustomerFeedback}
+                style={styles.feedbackCancelButton}
+              >
+                <Text style={styles.feedbackCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                disabled={submittingFeedback || !feedbackRating || loadingFeedbackOptions}
+                onPress={submitCustomerFeedback}
+                style={[
+                  styles.feedbackSubmitButton,
+                  (submittingFeedback || !feedbackRating || loadingFeedbackOptions) && styles.feedbackSubmitButtonDisabled,
+                ]}
+              >
+                {submittingFeedback ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.feedbackSubmitButtonText}>Add feedback</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+<Modal visible={showExpertPicker} transparent animationType="fade"
+  onRequestClose={() => !assigning && setShowExpertPicker(false)}>
+  <View style={styles.expertOverlay}>
+    <View style={styles.expertDialog}>
+      <Text style={styles.sectionTitle}>{selectedExpert ? 'Reassign Expert' : 'Assign Expert'}</Text>
+      <Text style={styles.eligibilityNoteText}>
+        {selectedExpert ? `Current expert: ${selectedExpert.name}. Select a replacement. The customer will receive a new start OTP.` : 'Select an available expert for this booking.'}
+      </Text>
+      <Text style={styles.eligibilityNoteText}>Showing active experts whose expertise and shift cover this booking.</Text>
+      {loadingExperts ? <ActivityIndicator color={THEME.colors.primary} /> : (
+        <ScrollView style={{ maxHeight: 320 }}>
+          {experts.length === 0 && !expertError && <Text style={styles.noEligibleExperts}>No eligible experts match this service and booking time.</Text>}
+          {experts.map(expert => (
+            <TouchableOpacity key={expert.id} accessibilityRole="radio"
+              accessibilityState={{ checked: pendingExpert?.id === expert.id }}
+              disabled={assigning} onPress={() => setPendingExpert(expert)}
+              style={[styles.expertOption, pendingExpert?.id === expert.id && { borderColor: THEME.colors.primary }]}>
+              <Text style={styles.expertText}>{expert.name}</Text>
+              <Ionicons name={pendingExpert?.id === expert.id ? 'radio-button-on' : 'radio-button-off'} size={22} color={THEME.colors.primary} />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+      {!!expertError && <Text accessibilityRole="alert" style={{ color: THEME.colors.cancelled }}>{expertError}</Text>}
+      {!loadingExperts && <TouchableOpacity disabled={assigning} onPress={() => { setPendingExpert(null); loadExperts(booking.hoodId); }}><Text style={styles.expertText}>Refresh experts</Text></TouchableOpacity>}
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <TouchableOpacity style={styles.expertOption} disabled={assigning} onPress={() => setShowExpertPicker(false)}><Text>Cancel</Text></TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button"
+          disabled={assigning || loadingExperts || !pendingExpert || !canAssignExpert}
+          onPress={handleAssignExpert}
+          style={[styles.expertSubmit, (assigning || loadingExperts || !pendingExpert || !canAssignExpert) && { opacity: 0.5 }]}>
+          {assigning ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '600' }}>{selectedExpert ? 'Reassign Expert' : 'Assign Expert'}</Text>}
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -894,90 +1207,29 @@ const handleAddToCalendar = async () => {
   </View>
 )}
         
-{/* ✅ Assign Expert Section */}
 {(canAssignExpert || selectedExpert) && (
-<View style={styles.section}>
-  <View style={styles.sectionHeader}>
-    <Ionicons
-      name="people-outline"
-      size={22}
-      color={THEME.colors.primary}
-    />
-    <Text style={styles.sectionTitle}>
-      {canAssignExpert
-        ? `Assign Expert${experts.length ? ` (${experts.length})` : ''}`
-        : 'Assigned Expert'}
-    </Text>
-  </View>
-<View style={styles.infoCard}>
-  {canAssignExpert && (
-  <View style={styles.eligibilityNote}>
-    <Ionicons name="filter-outline" size={16} color={THEME.colors.primary} />
-    <Text style={styles.eligibilityNoteText}>
-      Showing active experts whose expertise and shift cover this booking.
-    </Text>
-  </View>
-  )}
-
-  {canAssignExpert && loadingExperts ? (
-    <ActivityIndicator size="small" color={THEME.colors.primary} />
-  ) : canAssignExpert && experts.length === 0 && !selectedExpert ? (
-    <Text style={styles.noEligibleExperts}>
-      No eligible experts match this service and booking time.
-    </Text>
-  ) : (
-    <>
-      {/* ✅ Assigned Expert FIRST */}
-      {selectedExpert && (
-        <View style={styles.assignedWrapper}>
-          <Text style={styles.assignedLabel}>Assigned Expert</Text>
-
-          <View style={styles.assignedExpertCard}>
-  <Text style={styles.assignedExpertName}>
-    {selectedExpert.name}
-  </Text>
-</View>
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>Assigned Expert</Text>
+    <View style={styles.infoCard}>
+      <View style={styles.assignedExpertSummary}>
+        <View style={styles.assignedExpertAvatar}>
+          <Ionicons name="person" size={20} color={THEME.colors.primary} />
         </View>
-      )}
-
-      {/* ✅ Remaining Experts */}
-      {canAssignExpert && experts.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.expertList}
-        >
-          {experts
-            .filter(e => e.id !== selectedExpert?.id)
-            .map((expert, index) => {
-
-              const displayName =
-                expert.name || `Expert ${index + 1}`;
-
-              return (
-                <TouchableOpacity
-                  key={expert.id || index}
-                onPress={() => handleAssignExpert(expert)}
-                style={[
-                  styles.expertChip,
-                  assigning && { opacity: 0.6 }
-                ]}
-                disabled={assigning}
-              >
-                <Text style={styles.expertText}>
-                  {displayName}
-                </Text>
-                </TouchableOpacity>
-              );
-            })}
-        </ScrollView>
-      )}
-    </>
-  )}
-
-</View>
-</View>
-  )}
+        <View style={styles.assignedExpertCopy}>
+          <Text style={styles.assignedExpertLabel}>
+            {selectedExpert ? 'Current assigned expert' : 'Assignment status'}
+          </Text>
+          <Text style={styles.assignedExpertName}>
+            {selectedExpert?.name || 'No expert assigned'}
+          </Text>
+        </View>
+      </View>
+      {canAssignExpert && <TouchableOpacity accessibilityRole="button" style={styles.expertSubmit} onPress={openExpertPicker}>
+        <Text style={{ color: '#fff', fontWeight: '600' }}>{selectedExpert ? 'Reassign Expert' : 'Assign Expert'}</Text>
+      </TouchableOpacity>}
+    </View>
+  </View>
+)}
        {/* Address Section */}
 {booking.bookingAddress && (
   <View style={styles.section}>
@@ -1139,7 +1391,7 @@ const handleAddToCalendar = async () => {
                 child?.serviceName ||
                 child?.bookingCode ||
                 `Booking ${String(child?.bookingId || '').slice(0, 8)}`;
-              const renderFeedback = (label, feedback) => {
+              const renderFeedback = (label, feedback, allowCustomerAdd = false) => {
                 const submitted = feedback?.submitted === true;
                 const rating = Number(feedback?.rating || 0);
                 const choices =
@@ -1186,7 +1438,19 @@ const handleAddToCalendar = async () => {
                         )}
                       </>
                     ) : (
-                      <Text style={styles.feedbackEmpty}>Not submitted</Text>
+                      <>
+                        <Text style={styles.feedbackEmpty}>Not submitted</Text>
+                        {allowCustomerAdd && (
+                          <TouchableOpacity
+                            accessibilityRole="button"
+                            onPress={() => openCustomerFeedback(result)}
+                            style={styles.addFeedbackButton}
+                          >
+                            <Ionicons name="add-circle-outline" size={17} color="#FFF" />
+                            <Text style={styles.addFeedbackButtonText}>Add customer feedback</Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
                     )}
                   </View>
                 );
@@ -1207,7 +1471,7 @@ const handleAddToCalendar = async () => {
                     <Text style={styles.feedbackError}>Feedback could not be loaded.</Text>
                   ) : (
                     <>
-                      {renderFeedback('Customer → Expert', customerFeedback)}
+                      {renderFeedback('Customer → Expert', customerFeedback, true)}
                       <View style={styles.feedbackDivider} />
                       {renderFeedback('Expert → Customer', expertFeedback)}
                     </>
@@ -1397,6 +1661,10 @@ const infoStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  expertOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  expertDialog: { backgroundColor: THEME.colors.surface, borderRadius: 20, padding: 24, width: '100%', maxWidth: 520, maxHeight: '90%', gap: 16 },
+  expertOption: { padding: 14, borderWidth: 1, borderColor: '#ddd', borderRadius: 12, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  expertSubmit: { padding: 14, borderRadius: 12, backgroundColor: THEME.colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   container: {
     flex: 1,
     backgroundColor: THEME.colors.background,
@@ -1542,6 +1810,29 @@ const styles = StyleSheet.create({
   feedbackEmpty: { marginTop: 5, color: THEME.colors.textMuted, fontSize: 11 },
   feedbackDivider: { height: 1, marginVertical: 10, backgroundColor: THEME.colors.divider },
   feedbackError: { paddingVertical: 9, color: THEME.colors.error, fontSize: 12 },
+  addFeedbackButton: { marginTop: 10, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: THEME.colors.primary },
+  addFeedbackButtonText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  feedbackDialog: { width: '100%', maxWidth: 520, maxHeight: '90%', padding: 22, gap: 12, borderRadius: 20, backgroundColor: THEME.colors.surface },
+  feedbackDialogTitle: { color: THEME.colors.text, fontSize: 20, fontWeight: '800' },
+  feedbackDialogDescription: { color: THEME.colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  feedbackFieldLabel: { marginTop: 3, color: THEME.colors.text, fontSize: 12, fontWeight: '800' },
+  feedbackRatingPicker: { flexDirection: 'row', gap: 7 },
+  feedbackRatingButton: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderColor: THEME.colors.border, borderRadius: 11, backgroundColor: THEME.colors.surface },
+  feedbackRatingButtonActive: { borderColor: THEME.colors.primary, backgroundColor: THEME.colors.primary },
+  feedbackRatingText: { color: THEME.colors.primary, fontSize: 13, fontWeight: '800' },
+  feedbackRatingTextActive: { color: '#FFF' },
+  feedbackOptionPicker: { maxHeight: 180, flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  feedbackOptionButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: THEME.colors.border, borderRadius: 9, backgroundColor: THEME.colors.surface },
+  feedbackOptionButtonActive: { borderColor: THEME.colors.primary, backgroundColor: '#FAF5FF' },
+  feedbackOptionButtonText: { color: THEME.colors.text, fontSize: 11, fontWeight: '600' },
+  feedbackCommentInput: { minHeight: 86, maxHeight: 140, padding: 12, borderWidth: 1, borderColor: THEME.colors.border, borderRadius: 11, color: THEME.colors.text, fontSize: 13, textAlignVertical: 'top' },
+  feedbackCharacterCount: { marginTop: -8, alignSelf: 'flex-end', color: THEME.colors.textMuted, fontSize: 10 },
+  feedbackDialogActions: { flexDirection: 'row', gap: 10, marginTop: 3 },
+  feedbackCancelButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#F3F4F6' },
+  feedbackCancelButtonText: { color: THEME.colors.textSecondary, fontSize: 13, fontWeight: '700' },
+  feedbackSubmitButton: { flex: 1, minHeight: 46, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: THEME.colors.primary },
+  feedbackSubmitButtonDisabled: { opacity: 0.5 },
+  feedbackSubmitButtonText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   spacer: {
     height: 120,
   },
@@ -1690,9 +1981,32 @@ assignedExpertCard: {
 },
 
 assignedExpertName: {
-  color: '#FFF',
+  color: THEME.colors.text,
   fontSize: 15,
   fontWeight: '700',
+},
+assignedExpertSummary: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 10,
+},
+assignedExpertAvatar: {
+  width: 42,
+  height: 42,
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 21,
+  backgroundColor: '#F3E8FF',
+},
+assignedExpertCopy: {
+  flex: 1,
+  marginLeft: 11,
+},
+assignedExpertLabel: {
+  marginBottom: 2,
+  color: THEME.colors.textMuted,
+  fontSize: 11,
+  fontWeight: '600',
 },
 serviceTrackingCard: {
   backgroundColor: '#ffffff',
