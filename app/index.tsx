@@ -81,6 +81,7 @@ export default function Home() {
 
   const DATE_FILTERS = [
   'ALL',
+  'YESTERDAY',
   'TODAY',
   'TOMORROW',
   'DAY_AFTER',
@@ -378,6 +379,12 @@ const filterBookings = (data, search, status) => {
     const bookingDate = normalizeDate(slotStart);
 
     switch (activeDateFilter) {
+      case 'YESTERDAY': {
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        return bookingDate.getTime() === yesterday.getTime();
+      }
+
       case 'TODAY':
         return bookingDate.getTime() === today.getTime();
 
