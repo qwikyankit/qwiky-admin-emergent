@@ -1150,6 +1150,11 @@ Showing {filteredBookings.length} of {totalElements} bookings
                 action: () => router.push('/notification'),
               },
               {
+                icon: 'alert-circle-outline',
+                label: 'Notification - Deprecated',
+                action: () => router.push('/notification-deprecated'),
+              },
+              {
                 icon: 'add-circle-outline',
                 label: 'Create assisted booking',
                 disabled: !selectedHoodId,

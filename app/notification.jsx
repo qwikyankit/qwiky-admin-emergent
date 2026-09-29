@@ -1,213 +1,117 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
+  ScrollView,
   StyleSheet,
-  Alert,
-  ActivityIndicator,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import NotificationPlanner from '../components/NotificationPlanner';
+import NotificationTemplateManager from '../components/NotificationTemplateManager';
+import Toast from '../components/Toast';
+import { THEME } from '../constants/theme';
+import {
+  fetchNotificationCampaigns,
+  fetchNotificationTemplates,
+  getErrorMessage,
+} from '../services/api';
+import { unwrapList } from '../utils/notifications';
 
-import THEME from '../constants/theme';
-import { sendPushNotification } from '../services/api';
-
-export default function SendNotification() {
+export default function Notifications() {
   const router = useRouter();
+  const [tab, setTab] = useState('planner');
+  const [templates, setTemplates] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
 
-  const [title, setTitle] = useState('');
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
+  const showToast = (message, type = 'info') =>
+    setToast({ visible: true, message, type });
 
-  const handleSend = async () => {
-    if (!title.trim()) {
-      Alert.alert('Validation', 'Please enter title');
-      return;
-    }
-
-    if (!message.trim()) {
-      Alert.alert('Validation', 'Please enter message');
-      return;
-    }
-
+  const loadNotificationData = useCallback(async () => {
     try {
       setLoading(true);
-
-      await sendPushNotification({
-        title,
-        message,
-      });
-
-      Alert.alert(
-        'Success',
-        'Notification sent successfully'
-      );
-
-      setTitle('');
-      setMessage('');
-
-    } catch (e) {
-
-      Alert.alert(
-        'Error',
-        e?.message || 'Failed to send notification'
-      );
-
+      const [templateData, campaignData] = await Promise.all([
+        fetchNotificationTemplates(),
+        fetchNotificationCampaigns(),
+      ]);
+      setTemplates(unwrapList(templateData));
+      setCampaigns(unwrapList(campaignData));
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error');
     } finally {
-
       setLoading(false);
-
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadNotificationData();
+  }, [loadNotificationData]);
 
   return (
-    <SafeAreaView style={styles.container}>
-
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <Toast {...toast} onHide={() => setToast(current => ({ ...current, visible: false }))} />
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.replace('/')} style={styles.iconButton} accessibilityLabel="Go to home">
+          <Ionicons name="arrow-back" size={24} color={THEME.colors.text} />
+        </TouchableOpacity>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerTitle}>Notifications</Text>
+          <Text style={styles.headerSubtitle}>Templates and campaign scheduling</Text>
+        </View>
+      </View>
 
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color={THEME.colors.text}
+      <View style={styles.tabsShell}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+          <TouchableOpacity onPress={() => setTab('planner')} style={[styles.tab, tab === 'planner' && styles.tabActive]}>
+            <Ionicons name="calendar-outline" size={18} color={tab === 'planner' ? '#FFF' : THEME.colors.textSecondary} />
+            <Text style={[styles.tabText, tab === 'planner' && styles.tabTextActive]}>Planner</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setTab('templates')} style={[styles.tab, tab === 'templates' && styles.tabActive]}>
+            <Ionicons name="document-text-outline" size={18} color={tab === 'templates' ? '#FFF' : THEME.colors.textSecondary} />
+            <Text style={[styles.tabText, tab === 'templates' && styles.tabTextActive]}>Templates</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {tab === 'planner' ? (
+        <NotificationPlanner
+          campaigns={campaigns}
+          templates={templates}
+          loading={loading}
+          onRefresh={loadNotificationData}
+          showToast={showToast}
+        />
+      ) : (
+        <ScrollView contentContainerStyle={styles.templateScroll}>
+          <NotificationTemplateManager
+            templates={templates}
+            campaigns={campaigns}
+            loading={loading}
+            onRefresh={loadNotificationData}
+            showToast={showToast}
           />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>
-          Send Notification
-        </Text>
-
-        <View style={{ width: 24 }} />
-
-      </View>
-
-      <View style={styles.content}>
-
-        <Text style={styles.label}>
-          Title
-        </Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Enter notification title"
-          value={title}
-          onChangeText={setTitle}
-        />
-
-        <Text style={styles.label}>
-          Message
-        </Text>
-
-        <TextInput
-          style={[styles.input, styles.messageInput]}
-          placeholder="Enter notification message"
-          value={message}
-          onChangeText={setMessage}
-          multiline
-        />
-
-        <TouchableOpacity
-          style={styles.sendButton}
-          onPress={handleSend}
-          disabled={loading}
-        >
-
-          {loading ? (
-
-            <ActivityIndicator color="#FFF" />
-
-          ) : (
-
-            <>
-              <Ionicons
-                name="send"
-                size={18}
-                color="#FFF"
-              />
-
-              <Text style={styles.sendButtonText}>
-                Send Notification
-              </Text>
-            </>
-
-          )}
-
-        </TouchableOpacity>
-
-      </View>
-
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-
-  container: {
-    flex: 1,
-    backgroundColor: THEME.colors.background,
-  },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: THEME.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.border,
-  },
-
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: THEME.colors.text,
-  },
-
-  content: {
-    padding: 16,
-  },
-
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: THEME.colors.text,
-  },
-
-  input: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 15,
-    marginBottom: 20,
-  },
-
-  messageInput: {
-    minHeight: 140,
-    textAlignVertical: 'top',
-  },
-
-  sendButton: {
-    backgroundColor: THEME.colors.primary,
-    borderRadius: 14,
-    paddingVertical: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-
-  sendButtonText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
+  container: { flex: 1, backgroundColor: THEME.colors.background },
+  header: { minHeight: 62, paddingHorizontal: 14, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center' },
+  iconButton: { padding: 8 },
+  headerCopy: { flex: 1, marginLeft: 4 },
+  headerTitle: { color: THEME.colors.text, fontSize: 19, fontWeight: '900' },
+  headerSubtitle: { marginTop: 2, color: THEME.colors.textSecondary, fontSize: 11 },
+  tabsShell: { backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: THEME.colors.border },
+  tabs: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
+  tab: { minWidth: 120, minHeight: 40, paddingHorizontal: 15, borderRadius: 10, backgroundColor: '#F1F5F9', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  tabActive: { backgroundColor: THEME.colors.primary },
+  tabText: { color: THEME.colors.textSecondary, fontWeight: '800' },
+  tabTextActive: { color: '#FFF' },
+  templateScroll: { flexGrow: 1 },
 });

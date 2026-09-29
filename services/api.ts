@@ -571,6 +571,63 @@ export const updateFeedbackOptionStatus = async (ruleId, active) => {
   return response.data;
 };
 
+// --------------------
+// NOTIFICATION PLATFORM
+// --------------------
+
+export const fetchNotificationTemplates = async () => {
+  const response = await apiClient.get('/admin/notifications/templates');
+  return response.data;
+};
+
+export const createNotificationTemplate = async payload => {
+  const response = await apiClient.post('/admin/notifications/templates', payload);
+  return response.data;
+};
+
+export const updateNotificationTemplate = async (templateId, payload) => {
+  const response = await apiClient.put(
+    `/admin/notifications/templates/${templateId}`,
+    payload,
+  );
+  return response.data;
+};
+
+export const fetchNotificationCampaigns = async () => {
+  const response = await apiClient.get('/admin/notifications/campaigns');
+  return response.data;
+};
+
+export const fetchNotificationCampaign = async campaignId => {
+  const response = await apiClient.get(`/admin/notifications/campaigns/${campaignId}`);
+  return response.data;
+};
+
+export const createNotificationCampaign = async payload => {
+  const response = await apiClient.post('/admin/notifications/campaigns', payload);
+  return response.data;
+};
+
+export const updateNotificationCampaign = async (campaignId, payload) => {
+  const response = await apiClient.put(
+    `/admin/notifications/campaigns/${campaignId}`,
+    payload,
+  );
+  return response.data;
+};
+
+export const inactivateNotificationCampaign = async campaignId => {
+  const response = await apiClient.post(
+    `/admin/notifications/campaigns/${campaignId}/inactivate`,
+  );
+  return response.data;
+};
+
+export const createDirectNotification = async payload => {
+  const response = await apiClient.post('/admin/notifications', payload);
+  return response.data;
+};
+
 // ✅ Send Push Notification
 export const sendPushNotification = async ({
   title,
