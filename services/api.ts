@@ -4,10 +4,6 @@ import { STORAGE_KEYS } from '../constants/storage';
 import { redirectToLogin } from "../utils/navigation";
 
 
-const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
-
-const ONESIGNAL_API_KEY = process.env.EXPO_PUBLIC_ONESIGNAL_API_KEY;
-
 // Default token from environment
 
 // IMPORTANT: Must stay '/api' for Vercel rewrite to work
@@ -625,40 +621,6 @@ export const inactivateNotificationCampaign = async campaignId => {
 
 export const createDirectNotification = async payload => {
   const response = await apiClient.post('/admin/notifications', payload);
-  return response.data;
-};
-
-// ✅ Send Push Notification
-export const sendPushNotification = async ({
-  title,
-  message,
-}: {
-  title: string;
-  message: string;
-}) => {
-  
-  const response = await axios.post(
-    'https://api.onesignal.com/notifications?c=push',
-    {
-      app_id: ONESIGNAL_APP_ID,
-      headings: {
-        en: title,
-      },
-
-      contents: {
-        en: message,
-      },
-
-      included_segments: ['All'],
-      target_channel: 'push',
-    },
-    {
-      headers: {
-        Authorization: `Key ${ONESIGNAL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  );
   return response.data;
 };
 

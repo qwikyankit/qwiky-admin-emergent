@@ -25,7 +25,6 @@ export default function RootLayout() {
         <Stack.Screen name="feedback-options" />
         <Stack.Screen name="distance-pricing" />
         <Stack.Screen name="notification" />
-        <Stack.Screen name="notification-deprecated" />
       </Stack>
     </SafeAreaProvider>
   );
