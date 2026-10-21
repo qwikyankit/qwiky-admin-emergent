@@ -142,11 +142,7 @@ export default function Experts() {
     [hoods, hoodId],
   );
 
-  const returnToSettings = () =>
-    router.replace({
-      pathname: '/settings',
-      params: { hoodId, hoodName },
-    });
+  const returnHome = () => router.replace('/');
 
   const showToast = (message, type = 'info') =>
     setToast({ visible: true, message, type });
@@ -430,7 +426,7 @@ export default function Experts() {
         onHide={() => setToast(current => ({ ...current, visible: false }))}
       />
       <View style={styles.header}>
-        <TouchableOpacity onPress={returnToSettings} style={styles.iconButton}>
+        <TouchableOpacity onPress={returnHome} style={styles.iconButton}>
           <Ionicons name="arrow-back" size={24} color={THEME.colors.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>

@@ -44,11 +44,7 @@ export default function OperatingHours() {
   const [picker, setPicker] = useState(null);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
 
-  const returnToSettings = () =>
-    router.replace({
-      pathname: '/settings',
-      params: { hoodId, hoodName },
-    });
+  const returnHome = () => router.replace('/');
 
   const showToast = (message, type = 'info') =>
     setToast({ visible: true, message, type });
@@ -136,7 +132,7 @@ export default function OperatingHours() {
         onHide={() => setToast(current => ({ ...current, visible: false }))}
       />
       <View style={styles.header}>
-        <TouchableOpacity onPress={returnToSettings} style={styles.iconButton}>
+        <TouchableOpacity onPress={returnHome} style={styles.iconButton}>
           <Ionicons name="arrow-back" size={24} color={THEME.colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCopy}>

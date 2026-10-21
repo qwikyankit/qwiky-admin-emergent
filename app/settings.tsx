@@ -98,8 +98,7 @@ export default function Settings() {
   }, [hoodId, todayDayOfWeek]);
 
   const handleBack = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/');
+    router.replace('/');
   };
 
   const toggleTodayHours = async () => {

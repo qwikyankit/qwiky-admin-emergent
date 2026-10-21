@@ -144,7 +144,7 @@ export default function DistancePricing() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <Toast {...toast} onHide={() => setToast(current => ({ ...current, visible: false }))} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
+        <TouchableOpacity onPress={() => router.replace('/')} style={styles.iconButton}>
           <Ionicons name="arrow-back" size={24} color={THEME.colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCopy}>
