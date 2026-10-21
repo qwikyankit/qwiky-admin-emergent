@@ -39,7 +39,7 @@ import {
 import THEME from '../constants/theme';
 
 const STATUS_FILTERS = ['ALL', 'CONFIRMED', 'IN_PROGRESS', 'SETTLED', 'CANCELLED', 'FAILED', 'PAYMENT_PENDING'];
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 200;
 
 export default function Home() {
   const router = useRouter();
