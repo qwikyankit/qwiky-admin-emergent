@@ -37,6 +37,13 @@ const BookingCard = ({ booking, user, onPress, onCopy }) => {
   const isInProgress = String(booking?.status || '').toUpperCase() === 'IN_PROGRESS';
   const expectedEndTime = booking?.bookingSessionResponse?.expectedBookingEndTime;
   const [remainingTime, setRemainingTime] = useState('');
+  const remainingMilliseconds = expectedEndTime
+    ? new Date(expectedEndTime).getTime() - Date.now()
+    : Number.POSITIVE_INFINITY;
+  const isTimerUrgent =
+    Boolean(remainingTime) &&
+    Number.isFinite(remainingMilliseconds) &&
+    remainingMilliseconds <= 5 * 60 * 1000;
 
   useEffect(() => {
     if (!isInProgress || !expectedEndTime) {
@@ -129,7 +136,7 @@ const BookingCard = ({ booking, user, onPress, onCopy }) => {
         </View>
         <View style={styles.statusArea}>
           {!!remainingTime && (
-            <View style={styles.timerBadge}>
+            <View style={[styles.timerBadge, isTimerUrgent && styles.timerBadgeUrgent]}>
               <Ionicons name="time-outline" size={13} color="#FFF" />
               <Text style={styles.timerText}>{remainingTime}</Text>
             </View>
@@ -251,6 +258,7 @@ const styles = StyleSheet.create({
   bookingCode: { color: THEME.colors.text, fontSize: 15, fontWeight: '800' },
   statusArea: { marginLeft: 8, alignItems: 'flex-end', gap: 6 },
   timerBadge: { minHeight: 27, paddingHorizontal: 9, borderRadius: 14, backgroundColor: '#F97316', flexDirection: 'row', alignItems: 'center', gap: 5 },
+  timerBadgeUrgent: { backgroundColor: '#d0021b' },
   timerText: { color: '#FFF', fontSize: 11, fontWeight: '900', fontVariant: ['tabular-nums'] },
   serviceArea: { marginTop: 15, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   serviceCopy: { flex: 1, paddingRight: 12 },

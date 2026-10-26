@@ -200,6 +200,14 @@ const [pendingExpert, setPendingExpert] = useState<{ id: string; name: string } 
 const assignmentInFlight = useRef(false);
 const [expertError, setExpertError] = useState('');
 const [remainingTime, setRemainingTime] = useState('');
+const expectedBookingEndTime = booking?.bookingSessionResponse?.expectedBookingEndTime;
+const remainingMilliseconds = expectedBookingEndTime
+  ? new Date(expectedBookingEndTime).getTime() - Date.now()
+  : Number.POSITIVE_INFINITY;
+const isTimerUrgent =
+  Boolean(remainingTime) &&
+  Number.isFinite(remainingMilliseconds) &&
+  remainingMilliseconds <= 5 * 60 * 1000;
 
   // Handle Android back button
   useEffect(() => {
@@ -1035,7 +1043,7 @@ const handleAddToCalendar = async () => {
   {booking?.status?.toUpperCase() ===
     'IN_PROGRESS' &&
     remainingTime && (
-      <View style={styles.timerBadge}>
+      <View style={[styles.timerBadge, isTimerUrgent && styles.timerBadgeUrgent]}>
         <Ionicons
           name="time-outline"
           size={12}
@@ -2042,6 +2050,10 @@ timerBadge: {
   backgroundColor: '#F97316',
   borderRadius: 16,
   marginRight: 4,
+},
+
+timerBadgeUrgent: {
+  backgroundColor: '#d0021b',
 },
 
 timerBadgeText: {

@@ -32,6 +32,8 @@ export default function DistancePricing() {
   const hoodItemId = Array.isArray(params.hoodItemId) ? params.hoodItemId[0] : params.hoodItemId;
   const itemName = Array.isArray(params.itemName) ? params.itemName[0] : params.itemName;
   const offerPrice = Array.isArray(params.offerPrice) ? params.offerPrice[0] : params.offerPrice;
+  const hoodId = Array.isArray(params.hoodId) ? params.hoodId[0] : params.hoodId;
+  const hoodName = Array.isArray(params.hoodName) ? params.hoodName[0] : params.hoodName;
   const radiusParam = Array.isArray(params.serviceableRadiusKm)
     ? params.serviceableRadiusKm[0]
     : params.serviceableRadiusKm;
@@ -144,7 +146,15 @@ export default function DistancePricing() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <Toast {...toast} onHide={() => setToast(current => ({ ...current, visible: false }))} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.replace('/')} style={styles.iconButton}>
+        <TouchableOpacity
+          onPress={() =>
+            router.replace({
+              pathname: '/settings',
+              params: { hoodId, hoodName },
+            })
+          }
+          style={styles.iconButton}
+        >
           <Ionicons name="arrow-back" size={24} color={THEME.colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCopy}>
