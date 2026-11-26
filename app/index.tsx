@@ -14,6 +14,7 @@ import {
   Alert,
   Modal,
   useWindowDimensions,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -40,6 +41,20 @@ import THEME from '../constants/theme';
 
 const STATUS_FILTERS = ['ALL', 'CONFIRMED', 'IN_PROGRESS', 'SETTLED', 'CANCELLED', 'FAILED', 'PAYMENT_PENDING'];
 const PAGE_SIZE = 200;
+const MEROHA_LOGO = require('../assets/images/meroha-web.png');
+
+const MerohaHeaderBrand = ({ subtitle }: { subtitle: React.ReactNode }) => (
+  <View style={styles.headerBrand}>
+    <Image
+      source={MEROHA_LOGO}
+      style={styles.headerLogo}
+      resizeMode="contain"
+      accessible
+      accessibilityLabel="Meroha"
+    />
+    <Text style={styles.headerSubtitle}>{subtitle}</Text>
+  </View>
+);
 
 export default function Home() {
   const router = useRouter();
@@ -552,10 +567,7 @@ if (checkingAuth) {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <View>
-              <Text style={styles.headerTitle}>Qwiky Admin</Text>
-              <Text style={styles.headerSubtitle}>Booking Management</Text>
-            </View>
+            <MerohaHeaderBrand subtitle="Booking Management" />
             <View style={styles.headerActions}>
               <TouchableOpacity
                 style={styles.adminSettingsButton}
@@ -588,10 +600,7 @@ if (checkingAuth) {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <View>
-              <Text style={styles.headerTitle}>Qwiky Admin</Text>
-              <Text style={styles.headerSubtitle}>Booking Management</Text>
-            </View>
+            <MerohaHeaderBrand subtitle="Booking Management" />
             <View style={styles.headerActions}>
               <TouchableOpacity
                 style={styles.adminSettingsButton}
@@ -634,12 +643,9 @@ if (checkingAuth) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.headerTitle}>Qwiky Admin</Text>
-           <Text style={styles.headerSubtitle}>
-Showing {filteredBookings.length} of {totalElements} bookings
-          </Text>
-          </View>
+          <MerohaHeaderBrand
+            subtitle={`Showing ${filteredBookings.length} of ${totalElements} bookings`}
+          />
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.refreshButton}
@@ -1214,7 +1220,7 @@ const styles = StyleSheet.create({
     height: 78,
     marginBottom: 20,
     borderRadius: 24,
-    backgroundColor: '#F3E8FF',
+    backgroundColor: '#EFE3D8',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1258,6 +1264,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerBrand: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerLogo: {
+    width: 174,
+    height: 58,
   },
   headerTitle: {
     fontSize: 28,
@@ -1339,7 +1353,7 @@ const styles = StyleSheet.create({
     height: 36,
     marginRight: 9,
     borderRadius: 10,
-    backgroundColor: '#F3E8FF',
+    backgroundColor: '#EFE3D8',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1357,7 +1371,7 @@ const styles = StyleSheet.create({
   adminSettingsButton: {
     padding: 8,
     borderRadius: 12,
-    backgroundColor: '#F3E8FF',
+    backgroundColor: '#EFE3D8',
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -1435,7 +1449,7 @@ const styles = StyleSheet.create({
   filterSummaryCopy: { flex: 1, marginHorizontal: 9 },
   filterSummaryTitle: { color: THEME.colors.text, fontSize: 13, fontWeight: '800' },
   filterSummaryText: { marginTop: 2, color: THEME.colors.primary, fontSize: 10, fontWeight: '700' },
-  quickReset: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#F3E8FF', alignItems: 'center', justifyContent: 'center' },
+  quickReset: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#EFE3D8', alignItems: 'center', justifyContent: 'center' },
   filterOverlay: { flex: 1, padding: 18, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center' },
   filterSheet: { width: '100%', maxWidth: 440, padding: 19, borderRadius: 20, backgroundColor: '#FFF' },
   filterSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -1448,7 +1462,7 @@ const styles = StyleSheet.create({
   sheetChipActive: { backgroundColor: THEME.colors.primary },
   sheetChipText: { color: THEME.colors.textSecondary, fontSize: 11, fontWeight: '800' },
   sheetChipTextActive: { color: '#FFF' },
-  customRangePreview: { marginTop: 12, minHeight: 58, paddingHorizontal: 13, borderRadius: 13, borderWidth: 1, borderColor: '#E9D5FF', backgroundColor: '#FAF5FF', flexDirection: 'row', alignItems: 'center' },
+  customRangePreview: { marginTop: 12, minHeight: 58, paddingHorizontal: 13, borderRadius: 13, borderWidth: 1, borderColor: '#DCC6B4', backgroundColor: '#F7F0E8', flexDirection: 'row', alignItems: 'center' },
   customRangeCopy: { flex: 1, marginHorizontal: 10 },
   customRangeLabel: { color: THEME.colors.textMuted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   customRangeValue: { marginTop: 3, color: THEME.colors.text, fontSize: 12, fontWeight: '800' },
@@ -1609,8 +1623,8 @@ hoodPickerOption: {
   alignItems: 'center',
 },
 hoodPickerOptionSelected: {
-  borderColor: '#E9D5FF',
-  backgroundColor: '#FAF5FF',
+  borderColor: '#DCC6B4',
+  backgroundColor: '#F7F0E8',
 },
 hoodPickerIcon: {
   width: 40,
@@ -1620,7 +1634,7 @@ hoodPickerIcon: {
   alignItems: 'center',
   justifyContent: 'center',
 },
-hoodPickerIconSelected: { backgroundColor: '#F3E8FF' },
+hoodPickerIconSelected: { backgroundColor: '#EFE3D8' },
 hoodPickerOptionCopy: { flex: 1, marginHorizontal: 10 },
 hoodPickerOptionName: { color: THEME.colors.text, fontSize: 14, fontWeight: '700' },
 hoodPickerOptionNameSelected: { color: THEME.colors.primary, fontWeight: '900' },
@@ -1634,7 +1648,7 @@ hoodPickerEmptyText: { marginTop: 4, color: THEME.colors.textSecondary, fontSize
 assistedButton: {
   padding: 8,
   borderRadius: 12,
-  backgroundColor: '#EEF2FF',
+  backgroundColor: '#F2E6DC',
 },
 todayToggleContainer: {
   flexDirection: 'row',
@@ -1731,7 +1745,7 @@ webPickerIcon: {
   height: 44,
   marginRight: 12,
   borderRadius: 13,
-  backgroundColor: '#F3E8FF',
+  backgroundColor: '#EFE3D8',
   alignItems: 'center',
   justifyContent: 'center'
 },
@@ -1823,6 +1837,6 @@ webPickerApplyText: {
 notificationButton: {
   padding: 8,
   borderRadius: 12,
-  backgroundColor: '#EEF2FF',
+  backgroundColor: '#F2E6DC',
 },
 });

@@ -20,7 +20,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import StatusBadge from '../../components/StatusBadge';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import Toast from '../../components/Toast';
-import { addCustomerFeedback, fetchUserDetails, fetchBookings, fetchBookingFeedback, cancelBooking, settleBooking, getErrorMessage, fetchFeedbackOptions, fetchHoodExperts, assignExpert, reassignExpert } from '../../services/api';
+import { addCustomerFeedback, fetchUserDetails, fetchBookings, fetchBookingFeedback, cancelBooking, settleBooking, getErrorMessage, fetchFeedbackOptions, fetchHoodExperts, assignExpert, reassignExpert, unassignExpert } from '../../services/api';
 import { createCalendarEvent, formatIndiaDateTime, formatTime12Hour, getRemainingTime, getServiceEndTime } from '../../utils/helpers';
 import THEME from '../../constants/theme';
 
@@ -188,7 +188,7 @@ export default function BookingDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     visible: boolean;
-    type: 'settle' | 'cancel' | null;
+    type: 'settle' | 'cancel' | 'unassign' | null;
   }>({ visible: false, type: null });
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as const });
   const [experts, setExperts] = useState<{ id: string; name: string }[]>([]);
@@ -198,6 +198,7 @@ const [assigning, setAssigning] = useState(false);
 const [showExpertPicker, setShowExpertPicker] = useState(false);
 const [pendingExpert, setPendingExpert] = useState<{ id: string; name: string } | null>(null);
 const assignmentInFlight = useRef(false);
+const unassignmentInFlight = useRef(false);
 const [expertError, setExpertError] = useState('');
 const [remainingTime, setRemainingTime] = useState('');
 const expectedBookingEndTime = booking?.bookingSessionResponse?.expectedBookingEndTime;
@@ -644,6 +645,40 @@ const loadExperts = async (hoodId) => {
     }
   };
 
+  const handleUnassignExpert = async () => {
+    if (!booking?.bookingId || unassignmentInFlight.current) return;
+
+    try {
+      unassignmentInFlight.current = true;
+      setActionLoading(true);
+      const response = await unassignExpert(booking.bookingId);
+      const refreshedBooking =
+        response?.bookingDetailsResponse || response?.booking || response;
+      setBooking(refreshedBooking);
+      setPendingExpert(null);
+      setShowExpertPicker(false);
+      showToast('Expert deassigned. The booking remains confirmed.', 'success');
+    } catch (err: any) {
+      const code = err?.apiCode || err?.response?.data?.code;
+      const message =
+        code === 'EXPERT_NOT_ASSIGNED'
+          ? 'No expert is assigned to this booking.'
+          : code === 'BOOKING_UNASSIGNMENT_NOT_ALLOWED'
+            ? 'The expert cannot be deassigned after service has started or when the booking is no longer eligible.'
+            : code === 'BOOKING_NOT_FOUND'
+              ? 'Booking not found.'
+              : getErrorMessage(err);
+      showToast(message, 'error');
+      if ([404, 409].includes(err?.apiStatus || err?.response?.status)) {
+        await refreshCurrentBooking();
+      }
+    } finally {
+      unassignmentInFlight.current = false;
+      setActionLoading(false);
+      setConfirmModal({ visible: false, type: null });
+    }
+  };
+
   const handleCallUser = (phone: string) => {
     if (phone && phone !== 'N/A') {
       Linking.openURL(`tel:${phone}`);
@@ -792,6 +827,13 @@ const handleAddToCalendar = async () => {
   const isFailed = booking?.status?.toUpperCase() === 'FAILED';
   const canTakeAction = !isSettled && !isCancelled && !isFailed;
   const canAssignExpert = booking?.status?.toUpperCase() === 'CONFIRMED';
+  const bookingSession = booking?.bookingSessionResponse;
+  const canUnassignExpert =
+    canAssignExpert &&
+    Boolean(selectedExpert) &&
+    !bookingSession?.startTime &&
+    !bookingSession?.endTime &&
+    !bookingSession?.actualEndTime;
  
 
   if (!booking) {
@@ -833,6 +875,17 @@ const handleAddToCalendar = async () => {
         confirmColor={THEME.colors.cancelled}
         icon="close-circle"
         onConfirm={handleCancel}
+        onCancel={() => setConfirmModal({ visible: false, type: null })}
+        loading={actionLoading}
+      />
+      <ConfirmationModal
+        visible={confirmModal.visible && confirmModal.type === 'unassign'}
+        title="Deassign expert?"
+        message={`${selectedExpert?.name || 'The current expert'} will be removed from booking ${booking.bookingCode || booking.bookingId}. The booking will remain confirmed and can be assigned again.`}
+        confirmText="Deassign Expert"
+        confirmColor={THEME.colors.warning}
+        icon="person-remove-outline"
+        onConfirm={handleUnassignExpert}
         onCancel={() => setConfirmModal({ visible: false, type: null })}
         loading={actionLoading}
       />
@@ -1232,9 +1285,23 @@ const handleAddToCalendar = async () => {
           </Text>
         </View>
       </View>
-      {canAssignExpert && <TouchableOpacity accessibilityRole="button" style={styles.expertSubmit} onPress={openExpertPicker}>
-        <Text style={{ color: '#fff', fontWeight: '600' }}>{selectedExpert ? 'Reassign Expert' : 'Assign Expert'}</Text>
-      </TouchableOpacity>}
+      {canAssignExpert && (
+        <View style={styles.expertActionRow}>
+          <TouchableOpacity accessibilityRole="button" style={styles.expertSubmit} onPress={openExpertPicker}>
+            <Text style={{ color: '#fff', fontWeight: '600' }}>{selectedExpert ? 'Reassign Expert' : 'Assign Expert'}</Text>
+          </TouchableOpacity>
+          {canUnassignExpert && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              style={styles.unassignButton}
+              onPress={() => setConfirmModal({ visible: true, type: 'unassign' })}
+            >
+              <Ionicons name="person-remove-outline" size={18} color={THEME.colors.warning} />
+              <Text style={styles.unassignButtonText}>Deassign Expert</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   </View>
 )}
@@ -1655,7 +1722,7 @@ const infoStyles = StyleSheet.create({
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3E8FF',
+    backgroundColor: '#EFE3D8',
   },
   highlightValue: {
     fontSize: 16,
@@ -1719,9 +1786,9 @@ const styles = StyleSheet.create({
     marginBottom: 22,
     padding: 16,
     borderRadius: 18,
-    backgroundColor: '#F3E8FF',
+    backgroundColor: '#EFE3D8',
     borderWidth: 1,
-    borderColor: '#E9D5FF',
+    borderColor: '#DCC6B4',
   },
   summaryTop: { flexDirection: 'row', alignItems: 'center' },
   summaryServiceIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
@@ -1803,7 +1870,7 @@ const styles = StyleSheet.create({
   feedbackHelp: { marginTop: -6, marginBottom: 11, color: THEME.colors.textSecondary, fontSize: 12 },
   feedbackCard: { marginBottom: 12, padding: 15, borderRadius: 16, borderWidth: 1, borderColor: THEME.colors.border, backgroundColor: THEME.colors.surface },
   feedbackBookingHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  feedbackBookingIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3E8FF' },
+  feedbackBookingIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFE3D8' },
   feedbackBookingCopy: { flex: 1, marginLeft: 10 },
   feedbackBookingTitle: { color: THEME.colors.text, fontSize: 15, fontWeight: '800' },
   feedbackBookingId: { marginTop: 2, color: THEME.colors.textMuted, fontSize: 10 },
@@ -1812,7 +1879,7 @@ const styles = StyleSheet.create({
   feedbackSideLabel: { color: THEME.colors.textSecondary, fontSize: 12, fontWeight: '800' },
   feedbackStars: { flexDirection: 'row', gap: 2 },
   feedbackChoices: { marginTop: 9, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  feedbackChoice: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: '#F3E8FF' },
+  feedbackChoice: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: '#EFE3D8' },
   feedbackChoiceText: { color: THEME.colors.primary, fontSize: 10, fontWeight: '700' },
   feedbackComment: { marginTop: 9, color: THEME.colors.text, fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
   feedbackEmpty: { marginTop: 5, color: THEME.colors.textMuted, fontSize: 11 },
@@ -1831,7 +1898,7 @@ const styles = StyleSheet.create({
   feedbackRatingTextActive: { color: '#FFF' },
   feedbackOptionPicker: { maxHeight: 180, flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   feedbackOptionButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: THEME.colors.border, borderRadius: 9, backgroundColor: THEME.colors.surface },
-  feedbackOptionButtonActive: { borderColor: THEME.colors.primary, backgroundColor: '#FAF5FF' },
+  feedbackOptionButtonActive: { borderColor: THEME.colors.primary, backgroundColor: '#F7F0E8' },
   feedbackOptionButtonText: { color: THEME.colors.text, fontSize: 11, fontWeight: '600' },
   feedbackCommentInput: { minHeight: 86, maxHeight: 140, padding: 12, borderWidth: 1, borderColor: THEME.colors.border, borderRadius: 11, color: THEME.colors.text, fontSize: 13, textAlignVertical: 'top' },
   feedbackCharacterCount: { marginTop: -8, alignSelf: 'flex-end', color: THEME.colors.textMuted, fontSize: 10 },
@@ -1936,7 +2003,7 @@ eligibilityNote: {
   marginBottom: 14,
   padding: 10,
   borderRadius: 10,
-  backgroundColor: '#FAF5FF',
+  backgroundColor: '#F7F0E8',
   flexDirection: 'row',
   alignItems: 'center',
   gap: 7,
@@ -2004,7 +2071,7 @@ assignedExpertAvatar: {
   alignItems: 'center',
   justifyContent: 'center',
   borderRadius: 21,
-  backgroundColor: '#F3E8FF',
+  backgroundColor: '#EFE3D8',
 },
 assignedExpertCopy: {
   flex: 1,
@@ -2015,6 +2082,23 @@ assignedExpertLabel: {
   color: THEME.colors.textMuted,
   fontSize: 11,
   fontWeight: '600',
+},
+expertActionRow: {
+  gap: 10,
+},
+unassignButton: {
+  minHeight: 46,
+  borderWidth: 1,
+  borderColor: THEME.colors.warning,
+  borderRadius: 12,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+},
+unassignButtonText: {
+  color: THEME.colors.warning,
+  fontWeight: '700',
 },
 serviceTrackingCard: {
   backgroundColor: '#ffffff',

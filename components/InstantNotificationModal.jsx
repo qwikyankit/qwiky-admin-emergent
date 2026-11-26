@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   title: { color: THEME.colors.text, fontSize: 19, fontWeight: '900' },
   subtitle: { marginTop: 2, color: THEME.colors.textSecondary, fontSize: 11 },
   content: { width: '100%', maxWidth: 680, alignSelf: 'center', padding: 18, paddingBottom: 42 },
-  templateBadge: { alignSelf: 'flex-start', marginBottom: 18, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 9, backgroundColor: '#F3E8FF', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  templateBadge: { alignSelf: 'flex-start', marginBottom: 18, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 9, backgroundColor: '#EFE3D8', flexDirection: 'row', alignItems: 'center', gap: 6 },
   templateBadgeText: { color: THEME.colors.primary, fontSize: 11, fontWeight: '900' },
   label: { marginTop: 13, marginBottom: 7, color: THEME.colors.text, fontSize: 12, fontWeight: '800' },
   input: { minHeight: 46, paddingHorizontal: 13, borderWidth: 1, borderColor: THEME.colors.border, borderRadius: 10, backgroundColor: '#FFF', color: THEME.colors.text },

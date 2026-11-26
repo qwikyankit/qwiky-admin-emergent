@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   itemRow: { minHeight: 57, paddingHorizontal: 13, borderTopWidth: 1, borderTopColor: '#E5E7EB', flexDirection: 'row', gap: 9, alignItems: 'center' },
   itemName: { color: THEME.colors.text, fontWeight: '700' },
   productCard: { minHeight: 75, marginBottom: 10, padding: 13, borderRadius: 15, backgroundColor: '#FFF', borderWidth: 1, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center' },
-  productIcon: { width: 43, height: 43, marginRight: 11, borderRadius: 13, backgroundColor: '#F3E8FF', alignItems: 'center', justifyContent: 'center' },
+  productIcon: { width: 43, height: 43, marginRight: 11, borderRadius: 13, backgroundColor: '#EFE3D8', alignItems: 'center', justifyContent: 'center' },
   formScreen: { flex: 1, backgroundColor: THEME.colors.background },
   formHeader: { height: 60, paddingHorizontal: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   formTitle: { fontSize: 18, fontWeight: '800', color: THEME.colors.text, textTransform: 'capitalize' },

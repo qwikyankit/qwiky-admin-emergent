@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
 View,
 Text,
@@ -9,18 +9,181 @@ ActivityIndicator,
 ScrollView,
 Alert,
 Animated,
-Switch
+Switch,
+Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { WebView } from 'react-native-webview';
 import THEME from '../constants/theme';
 import {
 validateUserByMobile,
 fetchHoodItems,
 fetchSlots,
-createAssistedBooking
+createAssistedBooking,
+getErrorMessage
 } from '../services/api';
+
+const BLOCKED_PLACEHOLDERS = new Set(['na', 'n/a', 'null']);
+
+const normalizeText = value =>
+  value == null ? '' : String(value).trim().replace(/\s+/g, ' ');
+
+const validateName = value => {
+  const normalized = normalizeText(value);
+  if (!normalized || BLOCKED_PLACEHOLDERS.has(normalized.toLowerCase())) {
+    return 'Please enter a valid name';
+  }
+  if (normalized.length > 100) return 'Name must not exceed 100 characters';
+  return '';
+};
+
+const validateCity = value => {
+  const normalized = normalizeText(value);
+  if (!normalized || BLOCKED_PLACEHOLDERS.has(normalized.toLowerCase())) {
+    return 'Please provide a valid city';
+  }
+  return '';
+};
+
+const validateCoordinates = (latitudeValue, longitudeValue) => {
+  if (latitudeValue === '' || latitudeValue == null) return 'Latitude is required';
+  if (longitudeValue === '' || longitudeValue == null) return 'Longitude is required';
+
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    return 'Latitude must be between -90 and 90';
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return 'Longitude must be between -180 and 180';
+  }
+  if (latitude === 0 && longitude === 0) return 'Select a valid location, not 0, 0';
+  return '';
+};
+
+const buildMapHtml = (apiKey, latitudeValue, longitudeValue) => {
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
+  const hasLocation =
+    Number.isFinite(latitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    Number.isFinite(longitude) &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    !(latitude === 0 && longitude === 0);
+  const centre = hasLocation
+    ? { lat: latitude, lng: longitude }
+    : { lat: 20.5937, lng: 78.9629 };
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html, body, #map { width: 100%; height: 100%; margin: 0; }
+      body { font-family: system-ui, sans-serif; }
+      #hint { position: absolute; z-index: 2; left: 12px; right: 12px; top: 12px; padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,.94); color: #463129; font-size: 13px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,.15); text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div id="hint">Tap the map to choose the customer location</div>
+    <div id="map"></div>
+    <script>
+      const initialCentre = ${JSON.stringify(centre)};
+      const hasInitialLocation = ${JSON.stringify(hasLocation)};
+      const sendLocation = location => {
+        const message = JSON.stringify({ type: 'location-selected', latitude: location.lat(), longitude: location.lng() });
+        if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(message);
+        if (window.parent) window.parent.postMessage(message, '*');
+      };
+      window.initMap = () => {
+        const map = new google.maps.Map(document.getElementById('map'), {
+          center: initialCentre,
+          zoom: hasInitialLocation ? 17 : 5,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false
+        });
+        let marker = hasInitialLocation ? new google.maps.Marker({ map, position: initialCentre }) : null;
+        map.addListener('click', event => {
+          if (!marker) marker = new google.maps.Marker({ map });
+          marker.setPosition(event.latLng);
+          map.panTo(event.latLng);
+          map.setZoom(Math.max(map.getZoom(), 16));
+          sendLocation(event.latLng);
+        });
+      };
+    </script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=initMap&v=weekly"></script>
+  </body>
+</html>`;
+};
+
+const AddressLocationPicker = ({ latitude, longitude, onLocationChange }) => {
+  const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
+    const receiveLocation = event => {
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data?.type === 'location-selected') {
+          onLocationChange(data.latitude, data.longitude);
+        }
+      } catch {
+        // Ignore messages from other embedded content.
+      }
+    };
+    window.addEventListener('message', receiveLocation);
+    return () => window.removeEventListener('message', receiveLocation);
+  }, [onLocationChange]);
+
+  if (!googleMapsApiKey) {
+    return (
+      <View style={styles.locationHelp}>
+        <Ionicons name="information-circle-outline" size={19} color={THEME.colors.primary} />
+        <Text style={styles.locationHelpText}>
+          Enter the latitude and longitude below. Configure EXPO_PUBLIC_GOOGLE_MAPS_API_KEY to also select the location on a map.
+        </Text>
+      </View>
+    );
+  }
+
+  const mapHtml = buildMapHtml(googleMapsApiKey, latitude, longitude);
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.mapPicker}>
+        <iframe
+          title="Select customer location"
+          srcDoc={mapHtml}
+          style={{ width: '100%', height: 300, border: 0 }}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mapPicker}>
+      <WebView
+        originWhitelist={['*']}
+        source={{ html: mapHtml }}
+        onMessage={event => {
+          try {
+            const data = JSON.parse(event.nativeEvent.data);
+            if (data?.type === 'location-selected') {
+              onLocationChange(data.latitude, data.longitude);
+            }
+          } catch {
+            // Ignore malformed map messages.
+          }
+        }}
+      />
+    </View>
+  );
+};
 
 export default function AssistedBooking(){
 
@@ -49,9 +212,12 @@ line2:'',
 city:'',
 state:'',
 pinCode:'',
+latitude:'',
+longitude:'',
 title: 'Home',
 isDefault: true
 });
+const [formErrors,setFormErrors] = useState({});
 
 const [items,setItems] = useState([]);
 
@@ -72,6 +238,47 @@ const [bookingResponse, setBookingResponse] = useState(null);
 
 const [isCash,setIsCash] = useState(true);
 
+const updateAddress = (field, value) => {
+  setNewAddress(current => ({ ...current, [field]: value }));
+  setFormErrors(current => {
+    const next = { ...current };
+    if (field === 'city') next.city = validateCity(value);
+    if (field === 'latitude' || field === 'longitude') {
+      const latitude = field === 'latitude' ? value : newAddress.latitude;
+      const longitude = field === 'longitude' ? value : newAddress.longitude;
+      next.coordinates = validateCoordinates(latitude, longitude);
+    }
+    return next;
+  });
+};
+
+const selectMapLocation = useCallback((latitude, longitude) => {
+  const nextLatitude = Number(latitude).toFixed(6);
+  const nextLongitude = Number(longitude).toFixed(6);
+  setNewAddress(current => ({
+    ...current,
+    latitude: nextLatitude,
+    longitude: nextLongitude,
+  }));
+  setFormErrors(current => ({ ...current, coordinates: '' }));
+}, []);
+
+const validateManualDetails = () => {
+  const errors = {};
+  if (!newAddress.line1.trim()) errors.line1 = 'Address is required';
+  errors.city = validateCity(newAddress.city);
+  if (!newAddress.state.trim()) errors.state = 'State is required';
+  if (!newAddress.pinCode.trim()) errors.pinCode = 'PIN code is required';
+  errors.coordinates = validateCoordinates(newAddress.latitude, newAddress.longitude);
+  if (!user) errors.name = validateName(newUser.name);
+
+  const visibleErrors = Object.fromEntries(
+    Object.entries(errors).filter(([, message]) => Boolean(message)),
+  );
+  setFormErrors(visibleErrors);
+  return Object.keys(visibleErrors).length === 0;
+};
+
 
 const validateUser = async()=>{
 
@@ -90,6 +297,7 @@ setUser(res);
 setAddresses(res.addresses || []);
 setUseManualAddress(false);
 setSelectedAddress(null);
+setFormErrors({});
 }
 
 }catch(err){
@@ -117,10 +325,9 @@ return Alert.alert('Select address');
 
 if(
   (!user || addresses.length===0 || useManualAddress) &&
-  (!newAddress.line1.trim() || !newAddress.city.trim() ||
-    !newAddress.state.trim() || !newAddress.pinCode.trim())
+  !validateManualDetails()
 ){
-return Alert.alert('Complete address','Enter address, city, state and PIN code');
+return Alert.alert('Complete address','Correct the highlighted customer and location details');
 }
 
 try{
@@ -192,9 +399,26 @@ if(!selectedTimeSlot){
 return Alert.alert('Select slot');
 }
 
+const needsManualAddress = !user || addresses.length === 0 || useManualAddress;
+if (needsManualAddress && !validateManualDetails()) {
+  goToStep(2);
+  return Alert.alert('Complete address', 'Correct the highlighted customer and location details');
+}
+
 try{
 
 setLoading(true);
+
+const normalizedAddress = {
+  ...newAddress,
+  line1: newAddress.line1.trim(),
+  line2: newAddress.line2.trim(),
+  city: normalizeText(newAddress.city),
+  state: newAddress.state.trim(),
+  pinCode: newAddress.pinCode.trim(),
+  latitude: Number(newAddress.latitude),
+  longitude: Number(newAddress.longitude),
+};
 
 const body={
 hoodItemId:selectedItem.id,
@@ -210,7 +434,7 @@ body.userId=user.id;
 if(addresses.length>0 && !useManualAddress){
 body.addressId=selectedAddress;
 }else{
-body.addressRequest=newAddress;
+body.addressRequest=normalizedAddress;
 }
 
 }else{
@@ -218,13 +442,13 @@ body.addressRequest=newAddress;
 body.userRequest={
 mobileNumber:mobile,
 countryCode:'91',
-name:newUser.name,
+name:normalizeText(newUser.name),
 email:newUser.email,
 roles:['CUSTOMER'],
 createdBy:'ADMIN',
 status:'INACTIVE'
 };
-body.addressRequest=newAddress;
+body.addressRequest=normalizedAddress;
 }
 
 const booking = await createAssistedBooking(body);
@@ -235,8 +459,20 @@ Alert.alert('Success','Booking created',[
 {text:'OK',onPress:()=>router.replace('/')}
 ]);
 
-}catch{
-Alert.alert('Booking failed');
+}catch(error){
+const code = error?.apiCode || error?.response?.data?.code;
+const message = getErrorMessage(error);
+if (code === 'INVALID_NAME') {
+  setFormErrors(current => ({ ...current, name: message }));
+  goToStep(2);
+} else if (code === 'INVALID_CITY') {
+  setFormErrors(current => ({ ...current, city: message }));
+  goToStep(2);
+} else if (['LATITUDE_REQUIRED', 'LONGITUDE_REQUIRED', 'INVALID_COORDINATES'].includes(code)) {
+  setFormErrors(current => ({ ...current, coordinates: message }));
+  goToStep(2);
+}
+Alert.alert('Booking failed', message);
 }
 finally{
 setLoading(false);
@@ -289,9 +525,12 @@ line2:'',
 city:'',
 state:'',
 pinCode:'',
+latitude:'',
+longitude:'',
 title:'Home',
 isDefault:true
 });
+setFormErrors({});
 
 setSelectedItem(null);
 setSelectedTimeSlot(null);
@@ -474,26 +713,87 @@ color={THEME.colors.primary}
 
 {!user &&(
 <>
-<TextInput style={styles.input} placeholder="Name"
-onChangeText={(v)=>setNewUser({...newUser,name:v})}/>
+<TextInput
+style={[styles.input, formErrors.name && styles.inputError]}
+placeholder="Name"
+value={newUser.name}
+onChangeText={(v)=>{
+setNewUser(current=>({...current,name:v}));
+setFormErrors(current=>({...current,name:validateName(v)}));
+}}
+/>
+{!!formErrors.name && <Text style={styles.errorText}>{formErrors.name}</Text>}
 
-<TextInput style={styles.input} placeholder="Email"
-onChangeText={(v)=>setNewUser({...newUser,email:v})}/>
+<TextInput style={styles.input} placeholder="Email" value={newUser.email}
+onChangeText={(v)=>setNewUser(current=>({...current,email:v}))}/>
 </>
 )}
 
-<TextInput style={styles.input} placeholder="Address"
-onChangeText={(v)=>setNewAddress({...newAddress,line1:v})}/>
+<TextInput
+style={[styles.input, formErrors.line1 && styles.inputError]}
+placeholder="Address"
+value={newAddress.line1}
+onChangeText={(v)=>updateAddress('line1',v)}
+/>
+{!!formErrors.line1 && <Text style={styles.errorText}>{formErrors.line1}</Text>}
 
-<TextInput style={styles.input} placeholder="City"
-onChangeText={(v)=>setNewAddress({...newAddress,city:v})}/>
+<TextInput
+style={[styles.input, formErrors.city && styles.inputError]}
+placeholder="City"
+value={newAddress.city}
+onChangeText={(v)=>updateAddress('city',v)}
+/>
+{!!formErrors.city && <Text style={styles.errorText}>{formErrors.city}</Text>}
 
-<TextInput style={styles.input} placeholder="State"
-onChangeText={(v)=>setNewAddress({...newAddress,state:v})}/>
+<TextInput
+style={[styles.input, formErrors.state && styles.inputError]}
+placeholder="State"
+value={newAddress.state}
+onChangeText={(v)=>updateAddress('state',v)}
+/>
+{!!formErrors.state && <Text style={styles.errorText}>{formErrors.state}</Text>}
 
-<TextInput style={styles.input} placeholder="Pin"
+<TextInput
+style={[styles.input, formErrors.pinCode && styles.inputError]}
+placeholder="Pin"
+value={newAddress.pinCode}
 keyboardType="numeric"
-onChangeText={(v)=>setNewAddress({...newAddress,pinCode:v})}/>
+onChangeText={(v)=>updateAddress('pinCode',v.replace(/\D/g,''))}
+/>
+{!!formErrors.pinCode && <Text style={styles.errorText}>{formErrors.pinCode}</Text>}
+
+<Text style={styles.locationTitle}>Customer location</Text>
+<Text style={styles.locationDescription}>
+Enter coordinates or tap the exact address on the map. Both values are required for manual bookings.
+</Text>
+<AddressLocationPicker
+latitude={newAddress.latitude}
+longitude={newAddress.longitude}
+onLocationChange={selectMapLocation}
+/>
+<View style={styles.coordinateInputs}>
+<View style={styles.coordinateField}>
+<Text style={styles.fieldLabel}>Latitude</Text>
+<TextInput
+style={[styles.input, formErrors.coordinates && styles.inputError]}
+placeholder="e.g. 26.9124"
+value={newAddress.latitude}
+keyboardType="numbers-and-punctuation"
+onChangeText={(v)=>updateAddress('latitude',v)}
+/>
+</View>
+<View style={styles.coordinateField}>
+<Text style={styles.fieldLabel}>Longitude</Text>
+<TextInput
+style={[styles.input, formErrors.coordinates && styles.inputError]}
+placeholder="e.g. 75.7873"
+value={newAddress.longitude}
+keyboardType="numbers-and-punctuation"
+onChangeText={(v)=>updateAddress('longitude',v)}
+/>
+</View>
+</View>
+{!!formErrors.coordinates && <Text style={styles.errorText}>{formErrors.coordinates}</Text>}
 
 </>
 
@@ -771,7 +1071,7 @@ headerIcon:{width:42,height:42,borderRadius:12,alignItems:'center',justifyConten
 headerCopy:{flex:1,marginLeft:5},
 headerTitle:{fontSize:19,fontWeight:'800',color:THEME.colors.text},
 headerSubtitle:{marginTop:2,fontSize:11,color:THEME.colors.textSecondary},
-stepBadge:{minWidth:42,paddingHorizontal:9,paddingVertical:7,borderRadius:999,backgroundColor:'#F3E8FF',alignItems:'center'},
+stepBadge:{minWidth:42,paddingHorizontal:9,paddingVertical:7,borderRadius:999,backgroundColor:'#EFE3D8',alignItems:'center'},
 stepBadgeText:{color:THEME.colors.primary,fontSize:11,fontWeight:'800'},
 container:{flex:1},
 content:{padding:20,paddingBottom:45},
@@ -783,7 +1083,7 @@ fieldLabel:{marginBottom:7,color:THEME.colors.textSecondary,fontSize:12,fontWeig
 
 title:{fontSize:18,fontWeight:'800',marginTop:22,marginBottom:12,color:THEME.colors.text},
 
-manualAddressButton:{minHeight:48,marginTop:8,paddingHorizontal:14,borderWidth:1,borderColor:THEME.colors.primary,borderRadius:13,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:'#FAF5FF'},
+manualAddressButton:{minHeight:48,marginTop:8,paddingHorizontal:14,borderWidth:1,borderColor:THEME.colors.primary,borderRadius:13,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:'#F7F0E8'},
 manualAddressText:{color:THEME.colors.primary,fontWeight:'800'},
 
 input:{
@@ -792,6 +1092,59 @@ borderColor:'#E5E7EB',
 borderRadius:13,
 padding:14,
 marginBottom:10
+},
+inputError:{
+borderColor:THEME.colors.error,
+},
+errorText:{
+marginTop:-5,
+marginBottom:10,
+color:THEME.colors.error,
+fontSize:12,
+fontWeight:'600',
+},
+locationTitle:{
+marginTop:16,
+marginBottom:5,
+fontSize:16,
+fontWeight:'800',
+color:THEME.colors.text,
+},
+locationDescription:{
+marginBottom:12,
+color:THEME.colors.textSecondary,
+fontSize:13,
+lineHeight:19,
+},
+locationHelp:{
+marginBottom:12,
+padding:12,
+borderRadius:12,
+backgroundColor:'#F7F0E8',
+flexDirection:'row',
+gap:8,
+},
+locationHelpText:{
+flex:1,
+color:THEME.colors.textSecondary,
+fontSize:12,
+lineHeight:18,
+},
+mapPicker:{
+height:300,
+marginBottom:14,
+borderWidth:1,
+borderColor:THEME.colors.border,
+borderRadius:14,
+overflow:'hidden',
+backgroundColor:'#F3F4F6',
+},
+coordinateInputs:{
+flexDirection:'row',
+gap:10,
+},
+coordinateField:{
+flex:1,
 },
 
 primaryBtn:{
@@ -820,7 +1173,7 @@ marginBottom:8
 
 selected:{
 borderColor:THEME.colors.primary,
-backgroundColor:'#EEF2FF'
+backgroundColor:'#F2E6DC'
 },
 
 dateCard:{
@@ -834,7 +1187,7 @@ width:70
 },
 
 selectedCard:{
-backgroundColor:'#EEF2FF',
+backgroundColor:'#F2E6DC',
 borderColor:THEME.colors.primary
 },
 
@@ -859,7 +1212,7 @@ marginHorizontal:4
 },
 
 sessionSelected:{
-backgroundColor:'#EEF2FF',
+backgroundColor:'#F2E6DC',
 borderColor:THEME.colors.primary
 },
 
@@ -898,7 +1251,7 @@ marginBottom:10
 
 radioRowSelected:{
 borderColor:THEME.colors.primary,
-backgroundColor:'#EEF2FF'
+backgroundColor:'#F2E6DC'
 },
 
 radioOuter:{

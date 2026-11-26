@@ -146,7 +146,7 @@ serviceCard: {
 },discountBadge: {
   alignSelf: 'center',
   marginTop: 10,
-  backgroundColor: '#F3E8FF',
+  backgroundColor: '#EFE3D8',
   borderRadius: 999,
   paddingHorizontal: 14,
   paddingVertical: 6,

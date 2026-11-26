@@ -2,18 +2,18 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import type { PropsWithChildren } from "react";
 
-const favicon = require("../assets/images/favicon.png").uri;
+const favicon = require("../assets/images/meroha-icon.png").uri;
 const manifest = encodeURIComponent(
   JSON.stringify({
-    name: "Qwiky Admin",
-    short_name: "Qwiky Admin",
-    description: "Internal Booking Management System",
+    name: "Meroha Admin",
+    short_name: "Meroha Admin",
+    description: "Meroha booking management",
     start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    theme_color: "#4e2780",
-    background_color: "#ffffff",
+    theme_color: "#463129",
+    background_color: "#F7F0E8",
     icons: [
       { src: favicon, sizes: "1024x1024", type: "image/png", purpose: "any maskable" },
     ],
@@ -30,10 +30,10 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
         />
-        <meta name="theme-color" content="#4e2780" />
+        <meta name="theme-color" content="#463129" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Qwiky Admin" />
+        <meta name="apple-mobile-web-app-title" content="Meroha Admin" />
         <link rel="icon" type="image/png" href={favicon} />
         <link rel="apple-touch-icon" sizes="1024x1024" href={favicon} />
         <link rel="manifest" href={`data:application/manifest+json,${manifest}`} />

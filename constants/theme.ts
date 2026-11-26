@@ -1,12 +1,14 @@
-// Qwiky Admin Brand Theme
+// Meroha Admin Brand Theme
 export const THEME = {
   colors: {
-    primary: '#4e2780',
-    primaryLight: '#6b3fa0',
-    primaryDark: '#3a1d60',
-    secondary: '#ffde59',
-    secondaryLight: '#ffeb8a',
-    secondaryDark: '#e6c840',
+    primary: '#463129',
+    primaryLight: '#65493D',
+    primaryDark: '#2D1E18',
+    secondary: '#C9A98F',
+    secondaryLight: '#E3CCB8',
+    secondaryDark: '#A98265',
+    primarySoft: '#EFE3D8',
+    primarySubtle: '#F7F0E8',
     
     // Status colors
     confirmed: '#1E88E5',
@@ -21,13 +23,13 @@ export const THEME = {
     pendingBg: '#FFF8E1',
     
     // UI colors
-    background: '#F8F9FA',
-    surface: '#FFFFFF',
-    text: '#333333',
-    textSecondary: '#666666',
-    textMuted: '#888888',
-    border: '#EFEFEF',
-    divider: '#F0F0F0',
+    background: '#F7F0E8',
+    surface: '#FFFDFC',
+    text: '#463129',
+    textSecondary: '#725D52',
+    textMuted: '#9B8173',
+    border: '#E4D5C8',
+    divider: '#EADFD5',
     
     // Feedback
     success: '#43A047',

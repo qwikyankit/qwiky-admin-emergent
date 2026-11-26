@@ -88,7 +88,7 @@ export const campaignStatusColor = status => {
     case 'INACTIVE':
       return '#94A3B8';
     default:
-      return '#7C3AED';
+      return '#463129';
   }
 };
 

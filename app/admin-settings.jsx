@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Toast from '../components/Toast';
-import THEME from '../constants/theme';
+import { THEME } from '../constants/theme';
 import { getUser, logout, logoutAllDevices } from '../services/api';
 
 export default function AdminSettings() {
@@ -13,6 +13,7 @@ export default function AdminSettings() {
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
   const [canManageFeedback, setCanManageFeedback] = useState(false);
+  const [canManageLoyalty, setCanManageLoyalty] = useState(false);
 
   useEffect(() => {
     getUser().then(user => {
@@ -33,6 +34,11 @@ export default function AdminSettings() {
       // Older login responses did not include role metadata. Keep the entry
       // discoverable in that case and let the protected API enforce access.
       setCanManageFeedback(!rawRoles.length || roles.includes('SUPER_ADMIN'));
+      setCanManageLoyalty(
+        !rawRoles.length ||
+          roles.includes('SUPER_ADMIN') ||
+          roles.includes('CLUSTER_ADMIN'),
+      );
     });
   }, []);
 
@@ -86,6 +92,16 @@ export default function AdminSettings() {
       icon: 'map-outline',
       onPress: () => router.push('/hood-management'),
     },
+    ...(canManageLoyalty
+      ? [
+          {
+            title: 'Loyalty Offers',
+            description: 'Create targeted offers, control availability and review coupon performance.',
+            icon: 'gift-outline',
+            onPress: () => router.push('/loyalty-offers'),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -108,7 +124,7 @@ export default function AdminSettings() {
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.help}>
-          These settings apply across Qwiky and are not tied to one hood.
+          These settings apply across Meroha and are not tied to one hood.
         </Text>
         {cards.map(card => (
           <TouchableOpacity
@@ -179,7 +195,7 @@ const styles = StyleSheet.create({
   help: { marginBottom: 17, color: THEME.colors.textSecondary, lineHeight: 21 },
   card: { minHeight: 92, marginBottom: 12, padding: 15, borderRadius: 17, backgroundColor: '#FFF', borderWidth: 1, borderColor: THEME.colors.border, flexDirection: 'row', alignItems: 'center' },
   disabledCard: { opacity: 0.58 },
-  icon: { width: 50, height: 50, borderRadius: 15, backgroundColor: '#F3E8FF', alignItems: 'center', justifyContent: 'center' },
+  icon: { width: 50, height: 50, borderRadius: 15, backgroundColor: '#EFE3D8', alignItems: 'center', justifyContent: 'center' },
   cardCopy: { flex: 1, marginHorizontal: 13 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   cardTitle: { fontSize: 17, fontWeight: '800', color: THEME.colors.text },

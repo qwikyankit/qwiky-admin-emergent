@@ -34,7 +34,7 @@ const SECTIONS = [
     icon: 'people-outline',
     title: 'Experts',
     description: 'Add experts, update shifts and expertise, or transfer them.',
-    accent: '#F3E8FF',
+    accent: '#EFE3D8',
   },
 ];
 

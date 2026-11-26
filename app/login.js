@@ -9,10 +9,13 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { requestOtp, verifyOtp, getFriendlyError } from "../services/api";
 import THEME from "../constants/theme";
+
+const MEROHA_LOGO = require("../assets/images/meroha-web.png");
 
 export default function Login() {
   const router = useRouter();
@@ -75,8 +78,15 @@ export default function Login() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.card}>
-        <Text style={styles.title}>Qwiky Admin</Text>
-        <Text style={styles.subtitle}>OTP Login</Text>
+        <Image
+          source={MEROHA_LOGO}
+          style={styles.logo}
+          resizeMode="contain"
+          accessible
+          accessibilityLabel="Meroha"
+        />
+        <Text style={styles.title}>Meroha Admin</Text>
+        <Text style={styles.subtitle}>Secure OTP login</Text>
         <TextInput
           style={[styles.input, otpRequested && styles.inputDisabled]}
           placeholder="Mobile Number"
@@ -131,28 +141,39 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#F6F7FB",
+    backgroundColor: THEME.colors.background,
     padding: 20,
   },
 
   card: {
     width: "100%",
     maxWidth: 440,
-    backgroundColor: "#FFF",
+    backgroundColor: THEME.colors.surface,
     borderRadius: 24,
     paddingHorizontal: 32,
     paddingVertical: 36,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    elevation: 6,
+    ...Platform.select({
+      web: {
+        boxShadow: "0 8px 22px rgba(70, 49, 41, 0.10)",
+      },
+      ios: {
+        shadowColor: "#463129",
+        shadowOpacity: 0.1,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 8 },
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  logo: {
+    width: "100%",
+    height: 92,
+    marginBottom: 10,
   },
   title: {
-    fontSize: 42,
+    fontSize: 28,
     fontWeight: "800",
     color: THEME.colors.primary,
     textAlign: "center",
@@ -162,8 +183,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 34,
     textAlign: "center",
-    color: "#7A7A7A",
-    fontSize: 18,
+    color: THEME.colors.textSecondary,
+    fontSize: 16,
     fontWeight: "500",
   },
 
@@ -171,11 +192,11 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FAFAFA",
+    borderColor: THEME.colors.border,
+    backgroundColor: "#FFFDFC",
     paddingHorizontal: 18,
     fontSize: 18,
-    color: "#111827",
+    color: THEME.colors.text,
     marginBottom: 18,
   },
 

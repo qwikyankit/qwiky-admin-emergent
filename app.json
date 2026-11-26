@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Qwiky Admin",
+    "name": "Meroha Admin",
     "slug": "qwiky-admin",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/meroha-icon.png",
     "scheme": "qwiky-admin",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -14,8 +14,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#4e2780"
+        "foregroundImage": "./assets/images/meroha-icon.png",
+        "backgroundColor": "#463129"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.qwiky.admin"
@@ -23,12 +23,12 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png",
-      "name": "Qwiky Admin",
-      "shortName": "Qwiky Admin",
-      "description": "Internal Booking Management System",
-      "themeColor": "#4e2780",
-      "backgroundColor": "#ffffff",
+      "favicon": "./assets/images/meroha-icon.png",
+      "name": "Meroha Admin",
+      "shortName": "Meroha Admin",
+      "description": "Meroha booking management",
+      "themeColor": "#463129",
+      "backgroundColor": "#F7F0E8",
       "display": "standalone",
       "orientation": "portrait",
       "startUrl": "/"
@@ -38,10 +38,10 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/meroha-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#4e2780"
+          "backgroundColor": "#F7F0E8"
         }
       ],
       "@react-native-community/datetimepicker"

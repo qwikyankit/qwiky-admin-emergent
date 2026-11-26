@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   emptyTitle: { marginTop: 10, color: THEME.colors.text, fontSize: 17, fontWeight: '800' },
   card: { marginBottom: 14, padding: 16, borderRadius: 19, backgroundColor: '#FFF', borderWidth: 1, borderColor: THEME.colors.border },
   identityRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 48, height: 48, borderRadius: 15, backgroundColor: '#F3E8FF', alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 48, height: 48, borderRadius: 15, backgroundColor: '#EFE3D8', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: THEME.colors.primary, fontSize: 19, fontWeight: '900' },
   identityCopy: { flex: 1, marginHorizontal: 12 },
   expertName: { color: THEME.colors.text, fontSize: 17, fontWeight: '800' },
@@ -276,6 +276,6 @@ const styles = StyleSheet.create({
   noRatings: { marginTop: 15, padding: 14, borderRadius: 14, backgroundColor: '#FFFBEB', flexDirection: 'row', gap: 8, alignItems: 'center' },
   noRatingsText: { color: '#92400E', fontWeight: '700' },
   unavailable: { marginTop: 15, color: THEME.colors.textSecondary, fontSize: 12 },
-  manageButton: { minHeight: 46, marginTop: 14, paddingHorizontal: 13, borderRadius: 12, backgroundColor: '#F3E8FF', flexDirection: 'row', gap: 8, alignItems: 'center' },
+  manageButton: { minHeight: 46, marginTop: 14, paddingHorizontal: 13, borderRadius: 12, backgroundColor: '#EFE3D8', flexDirection: 'row', gap: 8, alignItems: 'center' },
   manageButtonText: { flex: 1, color: THEME.colors.primary, fontWeight: '800' },
 });

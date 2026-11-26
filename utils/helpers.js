@@ -79,7 +79,7 @@ export const openCalendarEvent = async ({
   const slotTime = formatTime(start);
 
   const title = encodeURIComponent(
-    `Qwiky | ${slotTime} | ${booking.bookingCode}`
+    `Meroha | ${slotTime} | ${booking.bookingCode}`
   );
 
   const details = encodeURIComponent(
@@ -147,7 +147,7 @@ ${booking?.bookingId || "N/A"}`;
 `BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
-SUMMARY:Qwiky | ${slotTime} | ${booking.bookingCode}
+SUMMARY:Meroha | ${slotTime} | ${booking.bookingCode}
 DESCRIPTION:${description.replace(/\n/g, "\\n")}
 LOCATION:${address || ""}
 DTSTART:${formatICSDate(start)}

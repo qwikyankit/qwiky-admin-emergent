@@ -31,7 +31,7 @@ export const getFriendlyError = error => {
       return "Please request an OTP first.";
 
     case "user_not_found":
-      return "You are not authorized to access Qwiky Admin.";
+      return "You are not authorized to access Meroha Admin.";
 
     case "invalid_mobile_number":
       return "Please enter a valid mobile number.";
@@ -257,6 +257,79 @@ export const updateHood = async (hoodId, payload) => {
 
 export const createAdminUser = async payload => {
   const response = await apiClient.post('/admin', payload);
+  return response.data;
+};
+
+// --------------------
+// LOYALTY OFFERS
+// --------------------
+
+export type LoyaltyOfferStatus = 'ACTIVE' | 'EXPIRE';
+export type LoyaltyPointUnit = 'PER' | 'ABS';
+export type LoyaltyRewardTrigger =
+  | 'NONE'
+  | 'REFERRER_SIGNUP'
+  | 'REFERRED_FIRST_BOOKING';
+
+export interface LoyaltyOfferPayload {
+  title: string;
+  displayTitle: string;
+  code: string;
+  value: number;
+  pointUnit: LoyaltyPointUnit;
+  maxValue: number | null;
+  maxUsage: number | null;
+  perGuestMax: number | null;
+  existingUser: boolean | null;
+  applicableHoodId: string | null;
+  applicableHoodCode: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  applicableWeekdays: string[];
+  eligibleUserIds: string[];
+  excludedUserIds: string[];
+  status: LoyaltyOfferStatus;
+  paused: boolean;
+  expired: boolean;
+  promo: boolean;
+  privateReward: boolean;
+  rewardTrigger: LoyaltyRewardTrigger;
+}
+
+export const fetchLoyaltyOffers = async () => {
+  const response = await apiClient.get('/admin/offers');
+  return response.data;
+};
+
+export const createLoyaltyOffer = async (payload: LoyaltyOfferPayload) => {
+  const response = await apiClient.post('/admin/offers', payload);
+  return response.data;
+};
+
+export const updateLoyaltyOffer = async (
+  offerId: string,
+  payload: LoyaltyOfferPayload,
+) => {
+  const response = await apiClient.put(`/admin/offers/${offerId}`, payload);
+  return response.data;
+};
+
+export const activateLoyaltyOffer = async (offerId: string) => {
+  const response = await apiClient.post(`/admin/offers/${offerId}/activate`);
+  return response.data;
+};
+
+export const setLoyaltyOfferPaused = async (offerId: string, paused: boolean) => {
+  const response = await apiClient.post(`/admin/offers/${offerId}/pause`, null, {
+    params: { paused },
+  });
+  return response.data;
+};
+
+export const fetchLoyaltyOfferReport = async (offerId: string) => {
+  const response = await apiClient.get(`/admin/offers/${offerId}/report`);
   return response.data;
 };
 
@@ -500,6 +573,11 @@ export const fetchHoodExperts = async (hoodId) => {
 export const reassignExpert = async (bookingId: string, expertUserId: string) => {
   const res = await apiClient.post(`/admin/bookings/${bookingId}/reassign/${expertUserId}`);
   return res.data;
+};
+
+export const unassignExpert = async (bookingId: string) => {
+  const response = await apiClient.post(`/admin/bookings/${bookingId}/unassign`);
+  return response.data;
 };
 
 // ✅ Assign Expert

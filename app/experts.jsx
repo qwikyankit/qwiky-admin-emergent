@@ -985,7 +985,7 @@ const styles = StyleSheet.create({
   removeText: { color: '#DC2626', fontWeight: '700', textAlign: 'right' },
   addExpertise: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingVertical: 8 },
   addExpertiseText: { color: THEME.colors.primary, fontWeight: '700' },
-  availabilityNote: { flexDirection: 'row', gap: 8, padding: 12, marginBottom: 12, borderRadius: 12, backgroundColor: '#F3E8FF' },
+  availabilityNote: { flexDirection: 'row', gap: 8, padding: 12, marginBottom: 12, borderRadius: 12, backgroundColor: '#EFE3D8' },
   availabilityNoteText: { flex: 1, color: THEME.colors.textSecondary, fontSize: 12, lineHeight: 18 },
   autoSaveNote: { flexDirection: 'row', gap: 8, padding: 12, marginBottom: 9, borderRadius: 12, backgroundColor: '#DCFCE7' },
   autoSaveNoteText: { flex: 1, color: '#166534', fontSize: 12, fontWeight: '700', lineHeight: 18 },

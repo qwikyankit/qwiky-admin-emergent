@@ -20,6 +20,7 @@ export default function RootLayout() {
         <Stack.Screen name="operating-hours" />
         <Stack.Screen name="hood-items" />
         <Stack.Screen name="admin-settings" />
+        <Stack.Screen name="loyalty-offers" />
         <Stack.Screen name="catalog" />
         <Stack.Screen name="hood-management" />
         <Stack.Screen name="feedback-options" />
